@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.vfsgm.network.AgentHolder
+import com.example.vfsgm.service.ApplicationService
 import com.example.vfsgm.service.AuthService
 import com.example.vfsgm.service.ClientSourceService
 import com.example.vfsgm.service.EncryptionService
@@ -13,11 +14,6 @@ import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun login() {
-//        if(AgentHolder.agent.isEmpty()){
-//            println("No Agent so returning!!!!")
-//            return
-//        }
-
         viewModelScope.launch(Dispatchers.IO) {
 
             val clientSource = ClientSourceService().getClientSource()
@@ -34,5 +30,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 cloudflareToken = cloudflareToken
             )
         }
+    }
+
+    fun loadApplicants(){
+        ApplicationService().loadApplicants(
+            accessToken = "",
+            username = "witej38159@alexida.com"
+        )
     }
 }

@@ -32,5 +32,12 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
         ) {
             Text("Login")
         }
+
+        Button(
+            onClick = viewModel::loadApplicants,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Load Applicants")
+        }
     }
 }
