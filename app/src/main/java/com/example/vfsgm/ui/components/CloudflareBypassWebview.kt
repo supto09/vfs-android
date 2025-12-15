@@ -39,8 +39,8 @@ import com.example.vfsgm.network.CookieJarHolder
 import okhttp3.Cookie
 import kotlin.random.Random
 
-const val timeoutMs = 30_000L // X time (example: 20 seconds)
-const val interventionDelayMs = 40_000L
+const val timeoutMs = 40_000L // X time (example: 20 seconds)
+const val interventionDelayMs = 50_000L
 
 
 @Composable
@@ -137,7 +137,7 @@ fun CloudflareBypassWebview(
                     if (all == lastCookieSnapshot) return
 
                     lastCookieSnapshot = all
-                    println("🍪 Cookie snapshot for $urlToBypass -> $all")
+//                    println("🍪 Cookie snapshot for $urlToBypass -> $all")
 
                     // Sync cookies from WebView -> OkHttp cookie jar (your existing logic)
                     syncCookiesFromWebViewToOkHttp(context, urlToBypass)
@@ -241,12 +241,6 @@ fun CloudflareBypassWebview(
                     override fun onLoadResource(view: WebView?, url: String?) {
                         super.onLoadResource(view, url)
 
-                        // Just a log helper (optional)
-                        if (url?.contains("cloudflare", ignoreCase = true) == true ||
-                            url?.contains("beacon.min.js", ignoreCase = true) == true
-                        ) {
-                            println("📡 Cloudflare resource loaded: $url")
-                        }
 
                         logAndSyncIfChanged()
 
@@ -270,7 +264,7 @@ fun CloudflareBypassWebview(
                             return super.shouldInterceptRequest(view, request)
                         }
 
-                        println("Passed URL: $url")
+//                        println("Passed URL: $url")
                         logAndSyncIfChanged()
 
                         // If clearance cookie shows up here, cancel timeout
@@ -312,6 +306,8 @@ fun CloudflareBypassWebview(
 }
 
 fun syncCookiesFromWebViewToOkHttp(context: Context, webUrl: String) {
+    println("❌ Running cookie sync")
+
     val uri = Uri.parse(webUrl)
     val domain = uri.host ?: return
     val cookieStr = CookieManager.getInstance().getCookie(webUrl) ?: return
