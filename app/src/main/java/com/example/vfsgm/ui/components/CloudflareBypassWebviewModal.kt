@@ -11,6 +11,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -19,12 +20,31 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.delay
 
 @Composable
 fun CloudflareModalWrapper() {
     val showDialog = remember { mutableStateOf(false) }
     val restartCount = remember { mutableIntStateOf(0) }
 
+    val reopenIntervalMinutes = 3L
+    val reopenIntervalMs = reopenIntervalMinutes * 60_000L
+
+    // 1) Auto-open once when this screen first appears
+    LaunchedEffect(Unit) {
+        showDialog.value = true
+    }
+
+    // 2) Auto-open every X minutes (this coroutine is cancelled automatically if composable is removed)
+    LaunchedEffect(reopenIntervalMs) {
+        while (true) {
+            delay(reopenIntervalMs)
+            if (!showDialog.value) {
+                restartCount.intValue = 0
+                showDialog.value = true
+            }
+        }
+    }
 
     Column {
         Button(
