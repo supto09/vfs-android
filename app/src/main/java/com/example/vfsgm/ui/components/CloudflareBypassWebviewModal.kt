@@ -1,5 +1,7 @@
 package com.example.vfsgm.ui.components
 
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,6 +11,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -19,6 +23,8 @@ import androidx.compose.ui.window.Dialog
 @Composable
 fun CloudflareModalWrapper() {
     val showDialog = remember { mutableStateOf(false) }
+    val restartCount = remember { mutableIntStateOf(0) }
+
 
     Column {
         Button(
@@ -42,13 +48,32 @@ fun CloudflareModalWrapper() {
                         .fillMaxWidth()
                         .fillMaxHeight(0.8f)
                 ) {
-                    CloudflareBypassWebview(
-                        onCompleted = {
-                            println("On Complete received")
-                            // Optional callback once cf_clearance is acquired
-                            showDialog.value = false
-                        },
-                    )
+                    key(restartCount.intValue) {
+                        CloudflareBypassWebview(
+                            restartCount = restartCount.intValue,
+                            onCompleted = {
+                                println("On Complete received")
+                                // Optional callback once cf_clearance is acquired
+                                showDialog.value = false
+                                restartCount.intValue = 0
+                            },
+                            onTimeout = {
+                                println("⏰ Timeout → restarting WebView")
+                                restartCount.intValue += 1
+
+                                // 1) Close dialog
+                                showDialog.value = false
+
+                                // 2) Reopen after a short delay (forces fresh WebView)
+                                Handler(Looper.getMainLooper()).postDelayed({
+                                    showDialog.value = true
+                                }, 300L) // 300ms is enough
+                            },
+                            onRequestManualIntervention = {
+                                println("Manual Intervention required")
+                            }
+                        )
+                    }
                 }
             }
         }
