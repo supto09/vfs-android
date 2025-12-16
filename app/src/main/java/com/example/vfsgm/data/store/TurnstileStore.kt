@@ -1,4 +1,4 @@
-package com.example.vfsgm.store
+package com.example.vfsgm.data.store
 
 import kotlinx.coroutines.channels.Channel
 import kotlin.let

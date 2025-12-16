@@ -1,6 +1,7 @@
-package com.example.vfsgm.service
+package com.example.vfsgm.data.api
 
-import com.example.vfsgm.network.NewOkHttpClient
+import com.example.vfsgm.data.network.NewOkHttpClient
+import com.example.vfsgm.core.ClientSourceManager
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
@@ -9,10 +10,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
 
-class ApplicationService {
+class ApplicantApi {
     fun loadApplicants(accessToken: String, username: String){
-        val clientSource = ClientSourceService().getClientSource()
-
         val requestBodyJson = """
             {
               "countryCode": "pak",
@@ -23,13 +22,13 @@ class ApplicationService {
             }
             """.trimIndent()
 
-        val mediaType = "text/plain; charset=UTF-8".toMediaType()
+        val mediaType = "application/json;charset=UTF-8".toMediaType()
         val requestBody = requestBodyJson.toRequestBody(mediaType)
 
         val request = Request.Builder().apply {
             url("https://lift-api.vfsglobal.com/appointment/application")
             post(requestBody)
-            addHeader("clientsource", clientSource)
+            addHeader("clientsource", ClientSourceManager.getClientSource("CC;"))
             addHeader("Authorize", accessToken)
             addHeader("accept", "application/json, text/plain, */*")
             addHeader("Origin", "https://visa.vfsglobal.com")

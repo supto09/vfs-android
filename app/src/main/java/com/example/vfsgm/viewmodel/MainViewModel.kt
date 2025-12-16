@@ -3,39 +3,50 @@ package com.example.vfsgm.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.vfsgm.network.AgentHolder
-import com.example.vfsgm.service.ApplicationService
-import com.example.vfsgm.service.AuthService
-import com.example.vfsgm.service.ClientSourceService
-import com.example.vfsgm.service.EncryptionService
-import com.example.vfsgm.store.TurnstileStore
+import com.example.vfsgm.data.api.ApplicantApi
+import com.example.vfsgm.data.api.AuthApi
+import com.example.vfsgm.core.ClientSourceManager
+import com.example.vfsgm.data.store.TurnstileStore
+import com.example.vfsgm.dto.SessionState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
+    private val authApi = AuthApi()
+    private val applicantApi = ApplicantApi()
+
+    private val _sessionState = MutableStateFlow(SessionState())
+    val sessionState = _sessionState.asStateFlow()
+
     fun login() {
         viewModelScope.launch(Dispatchers.IO) {
-
-            val clientSource = ClientSourceService().getClientSource()
-            println("ClientSource")
-            println(clientSource)
-
-            println("Login Start")
             val cloudflareToken = TurnstileStore.readToken()
-            println("CloudflareToken Found: $cloudflareToken")
-
-            AuthService().login(
+            val accessToken = authApi.login(
                 username = "witej38159@alexida.com",
                 password = "CczEk4u6n!7Z9i$",
                 cloudflareToken = cloudflareToken
             )
+
+            _sessionState.value = SessionState(
+                accessToken = accessToken,
+                isLoggedIn = true
+            )
         }
     }
 
-    fun loadApplicants(){
-        ApplicationService().loadApplicants(
-            accessToken = "",
-            username = "witej38159@alexida.com"
-        )
+    fun loadApplicants() {
+        val accessToken = _sessionState.value.accessToken ?: return
+
+        println("AccessToken: $accessToken")
+
+
+        viewModelScope.launch(Dispatchers.IO) {
+            applicantApi.loadApplicants(
+                accessToken = accessToken,
+                username = "witej38159@alexida.com"
+            )
+        }
     }
 }

@@ -1,4 +1,4 @@
-package com.example.vfsgm.network
+package com.example.vfsgm.data.network
 
 import android.content.Context
 import okhttp3.Cookie

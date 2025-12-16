@@ -15,7 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.example.vfsgm.store.TurnstileStore
+import com.example.vfsgm.data.store.TurnstileStore
 import kotlin.let
 
 

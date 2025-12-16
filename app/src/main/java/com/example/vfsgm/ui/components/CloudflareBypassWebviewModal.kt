@@ -35,16 +35,16 @@ fun CloudflareModalWrapper() {
         showDialog.value = true
     }
 
-    // 2) Auto-open every X minutes (this coroutine is cancelled automatically if composable is removed)
-    LaunchedEffect(reopenIntervalMs) {
-        while (true) {
-            delay(reopenIntervalMs)
-            if (!showDialog.value) {
-                restartCount.intValue = 0
-                showDialog.value = true
-            }
-        }
-    }
+//    // 2) Auto-open every X minutes (this coroutine is cancelled automatically if composable is removed)
+//    LaunchedEffect(reopenIntervalMs) {
+//        while (true) {
+//            delay(reopenIntervalMs)
+//            if (!showDialog.value) {
+//                restartCount.intValue = 0
+//                showDialog.value = true
+//            }
+//        }
+//    }
 
     Column {
         Button(

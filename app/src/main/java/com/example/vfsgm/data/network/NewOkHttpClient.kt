@@ -1,15 +1,12 @@
-package com.example.vfsgm.network
+package com.example.vfsgm.data.network
 
 import okhttp3.ConnectionPool
 import okhttp3.Interceptor
-import okhttp3.JavaNetCookieJar
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.logging.HttpLoggingInterceptor
-import java.net.CookieManager
-import java.net.CookiePolicy
 import java.util.concurrent.TimeUnit
 import kotlin.apply
 import kotlin.collections.forEach

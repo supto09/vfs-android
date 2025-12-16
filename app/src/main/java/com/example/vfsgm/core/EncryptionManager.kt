@@ -1,4 +1,4 @@
-package com.example.vfsgm.service
+package com.example.vfsgm.core
 
 import java.security.KeyFactory
 import java.security.PublicKey
@@ -7,7 +7,7 @@ import java.util.Base64
 import javax.crypto.Cipher
 
 
-class EncryptionService {
+object EncryptionManager {
     fun encryptWithRsaOaepSha256(inputValue: String): String {
 
         // Exact known constants
