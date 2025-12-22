@@ -30,7 +30,11 @@ class ApplicantApi {
         val request = Request.Builder().apply {
             url("https://lift-api.vfsglobal.com/appointment/application")
             post(requestBody)
-            addHeader("clientsource", ClientSourceManager.getClientSource(mysteriousPrefix = "CC;"))
+            addHeader(
+                "clientsource", ClientSourceManager.getClientSource(
+                    mysteriousPrefix = "GA;"
+                )
+            )
             addHeader("Authorize", accessToken)
             addHeader("accept", "application/json, text/plain, */*")
             addHeader("Origin", "https://visa.vfsglobal.com")
@@ -160,7 +164,11 @@ class ApplicantApi {
         val request = Request.Builder().apply {
             url("https://lift-api.vfsglobal.com/appointment/applicants")
             post(requestBody)
-            addHeader("clientsource", ClientSourceManager.getClientSource(mysteriousPrefix = "CC;"))
+            addHeader(
+                "clientsource", ClientSourceManager.getClientSource(
+                    mysteriousPrefix = "GA;"
+                )
+            )
             addHeader("Authorize", accessToken)
             addHeader("accept", "application/json, text/plain, */*")
             addHeader("Origin", "https://visa.vfsglobal.com")
@@ -182,12 +190,15 @@ class ApplicantApi {
     }
 
 
-
-    fun getGender(accessToken: String){
+    fun getGender(accessToken: String) {
         val request = Request.Builder().apply {
             url("https://lift-api.vfsglobal.com/master/gender/en-US")
             get()
-            addHeader("clientsource", ClientSourceManager.getClientSource(mysteriousPrefix = "CC;"))
+            addHeader(
+                "clientsource", ClientSourceManager.getClientSource(
+                    mysteriousPrefix = "GA;"
+                )
+            )
             addHeader("Authorize", accessToken)
             addHeader("accept", "application/json, text/plain, */*")
             addHeader("Origin", "https://visa.vfsglobal.com")

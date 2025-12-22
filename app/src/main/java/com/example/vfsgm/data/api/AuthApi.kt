@@ -47,7 +47,11 @@ class AuthApi {
         val request = Request.Builder().apply {
             url("https://lift-api.vfsglobal.com/user/login")
             post(formBody)
-            addHeader("clientsource", ClientSourceManager.getClientSource(mysteriousPrefix = "GA;"))
+            addHeader(
+                "clientsource", ClientSourceManager.getClientSource(
+                    mysteriousPrefix = "GA;"
+                )
+            )
             addHeader("accept", "application/json, text/plain, */*")
             addHeader("Origin", "https://visa.vfsglobal.com")
             addHeader("Referer", "https://visa.vfsglobal.com/")
