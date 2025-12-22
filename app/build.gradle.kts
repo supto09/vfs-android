@@ -69,4 +69,7 @@ dependencies {
     implementation(libs.moshi.kotlin)
     implementation(libs.logging.interceptor)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+
+    // datastore
+    implementation("androidx.datastore:datastore-preferences:1.1.7")
 }

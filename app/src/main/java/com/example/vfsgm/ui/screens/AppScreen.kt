@@ -31,20 +31,16 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
 
         TurnstileWebviewModal()
 
-
         AnimatedContent(
-            targetState = sessionState.isLoggedIn,
+            targetState = sessionState.accessToken,
             label = "AuthStateTransition"
-        ) { isLoggedIn ->
+        ) { accessToken ->
+            when (accessToken.isNullOrEmpty()) {
+                true -> AuthControlPanel(
+                    onLoginClick = viewModel::login
+                )
 
-            when (isLoggedIn) {
-                false -> {
-                    AuthControlPanel(
-                        onLoginClick = viewModel::login
-                    )
-                }
-
-                true -> AppControlPanel(
+                false -> AppControlPanel(
                     onLoadApplicant = viewModel::loadApplicants,
                     onAddApplicant = viewModel::addApplicant,
                     onGenderLoad = viewModel::getGender
