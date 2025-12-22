@@ -54,7 +54,6 @@ fun CloudflareModalWrapper() {
             shape = RoundedCornerShape(6.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(36.dp)
         ) {
             Text("CF")
         }
