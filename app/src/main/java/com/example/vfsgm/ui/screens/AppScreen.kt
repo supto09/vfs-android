@@ -43,7 +43,8 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
                 false -> AppControlPanel(
                     onLoadApplicant = viewModel::loadApplicants,
                     onAddApplicant = viewModel::addApplicant,
-                    onGenderLoad = viewModel::getGender
+                    onGenderLoad = viewModel::getGender,
+                    onLogout = viewModel::logout
                 )
             }
         }

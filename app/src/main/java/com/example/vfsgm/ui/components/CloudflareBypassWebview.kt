@@ -80,6 +80,17 @@ fun CloudflareBypassWebview(
                 val webView = WebView(context)
                 webViewRef = webView
 
+                // =========================
+                // 1) BASIC WEBVIEW SETTINGS
+                // =========================
+                webView.settings.javaScriptEnabled = true
+                webView.settings.domStorageEnabled = true
+
+                val userAgent = webView.settings.userAgentString
+                AgentHolder.agent = userAgent
+                println("User Agent: $userAgent")
+
+
                 val mainHandler = Handler(Looper.getMainLooper())
                 val timeoutHandler = Handler(Looper.getMainLooper())
                 val interventionHandler = Handler(Looper.getMainLooper())
@@ -95,13 +106,6 @@ fun CloudflareBypassWebview(
                 }
 
                 stopTimersRef.value = { stopAllTimers() }
-
-
-                // =========================
-                // 1) BASIC WEBVIEW SETTINGS
-                // =========================
-                webView.settings.javaScriptEnabled = true
-                webView.settings.domStorageEnabled = true
 
                 // =========================
                 // 2) COOKIE SETUP + CLEAN START

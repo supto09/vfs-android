@@ -152,6 +152,11 @@ class ApplicantApi {
         }
         """.trimIndent()
 
+
+//        val requestBodyJson = """
+//            {"countryCode":"pak","missionCode":"ukr","centerCode":"ISB","loginUser":"${subject.username}","visaCategoryCode":"IP","isEdit":false,"feeEntryTypeCode":null,"feeExemptionTypeCode":null,"feeExemptionDetailsCode":null,"applicantList":[{"urn":"","arn":"","centerClassCode":null,"selectedSubvisaCategory":null,"Subclasscode":null,"dateOfApplication":null,"loginUser":"${subject.username}","firstName":"XI","employerFirstName":"","middleName":"","lastName":"WION","employerLastName":"","salutation":"","gender":2,"nationalId":null,"VisaToken":null,"employerContactNumber":"","contactNumber":"243467654624336","dialCode":"44","employerDialCode":"","passportNumber":"A34644356","confirmPassportNumber":null,"passportExpirtyDate":"23/12/2027","dateOfBirth":"12/12/1990","emailId":"${subject.username}","employerEmailId":"","nationalityCode":"NZL","state":null,"city":null,"isEndorsedChild":false,"applicantType":0,"addressline1":null,"addressline2":null,"pincode":null,"referenceNumber":null,"vlnNumber":null,"applicantGroupId":0,"parentPassportNumber":"","parentPassportExpiry":"","dateOfDeparture":null,"entryType":"","eoiVisaType":"","passportType":"","vfsReferenceNumber":"","familyReunificationCerificateNumber":"","PVRequestRefNumber":"","PVStatus":"","PVStatusDescription":"","PVCanAllowRetry":true,"PVisVerified":false,"eefRegistrationNumber":"","isAutoRefresh":true,"helloVerifyNumber":"","OfflineCClink":"","idenfystatuscheck":false,"vafStatus":null,"SpecialAssistance":"","AdditionalRefNo":null,"juridictionCode":"","canInitiateVAF":false,"canEditVAF":false,"canDeleteVAF":false,"canDownloadVAF":false,"Retryleft":"","ipAddress":"${PublicIpManager.publicIp}"}],"languageCode":"en-US","isWaitlist":false,"juridictionCode":null,"regionCode":null}
+//        """.trimIndent()
+
         println(
             requestBodyJson.replace("\n", "")
                 .replace("\r", "")

@@ -21,7 +21,6 @@ class SessionRepository(
     private val _state = MutableStateFlow(SessionState())
     val state: StateFlow<SessionState> = _state.asStateFlow()
 
-
     init {
         CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
             accessTokenStore.accessTokenFlow

@@ -12,9 +12,10 @@ import com.example.vfsgm.data.dto.Applicant
 
 @Composable
 fun AppControlPanel(
-    onLoadApplicant:  () -> Unit,
-    onAddApplicant:  () -> Unit,
-    onGenderLoad:  () -> Unit,
+    onLoadApplicant: () -> Unit,
+    onAddApplicant: () -> Unit,
+    onGenderLoad: () -> Unit,
+    onLogout: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Button(
@@ -36,6 +37,13 @@ fun AppControlPanel(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Get Gender")
+        }
+
+        Button(
+            onClick = onLogout,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Logout")
         }
     }
 }
