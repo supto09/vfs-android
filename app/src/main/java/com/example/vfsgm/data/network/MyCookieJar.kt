@@ -4,6 +4,7 @@ import android.content.Context
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.File
 
 object CookieJarHolder {
@@ -62,35 +63,95 @@ class MyCookieJar(context: Context) : CookieJar {
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
-        println("loadFor request: ${url}")
-        println("loadFor host: ${url.host}")
-        return cookies[url.host].orEmpty()
+//        println("loadFor request: ${url}")
+//        println("loadFor host: ${url.host}")
+//        return cookies[url.host].orEmpty()
+
+
+        return cookies.values.flatten().filter { cookie ->
+            // not expired
+
+            // domain match
+            "https://${url.host}".toHttpUrlOrNull()?.host?.endsWith(
+                cookie.domain.removePrefix(
+                    "."
+                )
+            ) == true &&
+                    // path match
+                    url.encodedPath.startsWith(cookie.path) &&
+                    // secure check
+                    (!cookie.secure || url.isHttps)
+        }
     }
 
     private fun loadCookiesFromFile() {
+        // Dedupe by (name, domain, path), keep the newest expiresAt (and drop expired if you want)
+        val now = System.currentTimeMillis()
+        val dedup = LinkedHashMap<String, Cookie>() // key -> cookie (preserve file order)
+
+        if (!file.exists()) return
+
         file.bufferedReader().useLines { lines ->
             lines.forEach { line ->
-                parseCookie(line)?.let { cookie ->
-                    cookies.getOrPut(cookie.domain) { mutableListOf() }.add(cookie)
+                val cookie = parseCookie(line) ?: return@forEach
+
+                // OPTIONAL: drop expired cookies while loading
+                if (cookie.expiresAt <= now) return@forEach
+
+                val key = "${cookie.name}|${cookie.domain}|${cookie.path}"
+                val prev = dedup[key]
+
+                // keep the one with later expiry (or keep the latest read if you prefer)
+                if (prev == null || cookie.expiresAt >= prev.expiresAt) {
+                    dedup[key] = cookie
                 }
             }
+        }
+
+        cookies.clear()
+        dedup.values.forEach { cookie ->
+            cookies.getOrPut(cookie.domain) { mutableListOf() }.add(cookie)
         }
     }
 
     private fun saveCookiesToFile() {
-
         println("Before:")
         printAllCookies()
         println("==============")
 
+        // Dedupe by (name, domain, path), keep the newest expiresAt (and drop expired if you want)
+        val now = System.currentTimeMillis()
+        val dedup = LinkedHashMap<String, Cookie>()
 
+        cookies.values
+            .flatten()
+            .forEach { cookie ->
+                // OPTIONAL: drop expired cookies while saving
+                if (cookie.expiresAt <= now) return@forEach
+
+                val key = "${cookie.name}|${cookie.domain}|${cookie.path}"
+                val prev = dedup[key]
+
+                if (prev == null || cookie.expiresAt >= prev.expiresAt) {
+                    dedup[key] = cookie
+                }
+            }
+
+        // Rewrite file from deduped set
         file.bufferedWriter().use { writer ->
-            cookies.values.flatten().forEach { cookie ->
-                writer.write(serializeCookie(cookie) + "\n")
+            dedup.values.forEach { cookie ->
+                writer.write(serializeCookie(cookie))
+                writer.newLine()
             }
         }
 
-        println("Before:")
+        // Keep in-memory jar consistent with what we wrote
+        cookies.clear()
+        dedup.values.forEach { cookie ->
+            cookies.getOrPut(cookie.domain) { mutableListOf() }.add(cookie)
+        }
+
+        println("After:")
         printAllCookies()
         println("==============")
     }
