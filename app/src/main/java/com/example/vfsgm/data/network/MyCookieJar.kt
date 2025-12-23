@@ -4,7 +4,6 @@ import android.content.Context
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.File
 
 object CookieJarHolder {
@@ -16,11 +15,12 @@ object CookieJarHolder {
     }
 }
 
-
 class MyCookieJar(context: Context) : CookieJar {
 
     private val file = File(context.filesDir, "cookies.txt")
-    private val cookies = mutableMapOf<String, MutableList<Cookie>>() // domain -> cookies
+
+    // baseDomain -> cookies
+    private val cookies = mutableMapOf<String, MutableList<Cookie>>()
 
     init {
         if (file.exists()) {
@@ -30,87 +30,121 @@ class MyCookieJar(context: Context) : CookieJar {
         }
     }
 
+    /**
+     * Your requirement: domain will always be like "something.com".
+     * So base domain = last 2 labels.
+     */
+    private fun toBaseDomain(hostOrDomain: String): String {
+        val host = hostOrDomain.trim()
+            .removePrefix(".")
+            .lowercase()
+
+        val parts = host.split(".").filter { it.isNotBlank() }
+        if (parts.size <= 2) return host
+        return parts.takeLast(2).joinToString(".")
+    }
+
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-        val domain = url.host
+        val baseDomain = toBaseDomain(url.host)
 
-        // Get existing cookies for the domain, or create a new empty list if none exist
-        val currentList = this.cookies[url.host] ?: mutableListOf()
+        // Existing cookies for the base domain
+        val currentList = this.cookies[baseDomain] ?: mutableListOf()
 
-        // Create a mutable list to hold merged cookies
-        val mergedList = mutableListOf<Cookie>()
+        // Merge by (name, path) within the base domain
+        val dedup = LinkedHashMap<String, Cookie>() // key -> cookie
+        fun keyOf(c: Cookie) = "${c.name}|${c.path}"
 
-        // Keep a map of cookie names that were updated (to avoid duplicates)
-        val updatedNames = mutableSetOf<String>()
-
-        // Add new cookies to the merged list, and mark their names
-        for (newCookie in cookies) {
-            mergedList.add(newCookie)
-            updatedNames.add(newCookie.name)
+        // Put old first, then new overrides
+        currentList.forEach { old ->
+            val normalized = normalizeCookieToBaseDomain(old, baseDomain)
+            dedup[keyOf(normalized)] = normalized
+        }
+        cookies.forEach { incoming ->
+            val normalized = normalizeCookieToBaseDomain(incoming, baseDomain)
+            dedup[keyOf(normalized)] = normalized
         }
 
-        // Add old cookies that were not overwritten by new cookies
-        for (oldCookie in currentList) {
-            if (!updatedNames.contains(oldCookie.name)) {
-                mergedList.add(oldCookie)
-            }
-        }
-
-        // Save the merged list back to the map
-        this.cookies[domain] = mergedList
-
-        // Persist to file
+        this.cookies[baseDomain] = dedup.values.toMutableList()
         saveCookiesToFile()
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
-//        println("loadFor request: ${url}")
-//        println("loadFor host: ${url.host}")
-//        return cookies[url.host].orEmpty()
+        val baseDomain = toBaseDomain(url.host)
+        val now = System.currentTimeMillis()
 
+        return cookies[baseDomain]
+            .orEmpty()
+            .asSequence()
+            .filter { it.expiresAt > now } // drop expired at request-time
+            .filter { cookie ->
+                // Domain match (base-domain bucket already picked, but still keep safe check)
+                val reqBase = toBaseDomain(url.host)
+                val cookieBase = toBaseDomain(cookie.domain)
+                reqBase == cookieBase
+            }
+            .filter { cookie ->
+                // Path match
+                url.encodedPath.startsWith(cookie.path)
+            }
+            .filter { cookie ->
+                // Secure check
+                (!cookie.secure || url.isHttps)
+            }
+            .toList()
+    }
 
-        return cookies.values.flatten().filter { cookie ->
-            // not expired
+    private fun normalizeCookieToBaseDomain(cookie: Cookie, baseDomain: String): Cookie {
+        val normalizedDomain = toBaseDomain(baseDomain)
 
-            // domain match
-            "https://${url.host}".toHttpUrlOrNull()?.host?.endsWith(
-                cookie.domain.removePrefix(
-                    "."
-                )
-            ) == true &&
-                    // path match
-                    url.encodedPath.startsWith(cookie.path) &&
-                    // secure check
-                    (!cookie.secure || url.isHttps)
+        // If already correct, keep as-is
+        if (toBaseDomain(cookie.domain) == normalizedDomain && cookie.domain.removePrefix(".") == normalizedDomain) {
+            // still might be ".something.com" vs "something.com" — we normalize to "something.com"
+            // but OkHttp Cookie.Builder().domain() expects host-only style; it’s fine.
         }
+
+        return Cookie.Builder()
+            .name(cookie.name)
+            .value(cookie.value)
+            .domain(normalizedDomain)
+            .path(cookie.path)
+            .expiresAt(cookie.expiresAt)
+            .apply {
+                if (cookie.secure) secure()
+                if (cookie.httpOnly) httpOnly()
+            }
+            .build()
     }
 
     private fun loadCookiesFromFile() {
-        // Dedupe by (name, domain, path), keep the newest expiresAt (and drop expired if you want)
         val now = System.currentTimeMillis()
-        val dedup = LinkedHashMap<String, Cookie>() // key -> cookie (preserve file order)
+        val dedup = LinkedHashMap<String, Cookie>() // (name|baseDomain|path) -> cookie
 
         if (!file.exists()) return
 
         file.bufferedReader().useLines { lines ->
             lines.forEach { line ->
-                val cookie = parseCookie(line) ?: return@forEach
+                val parsed = parseCookie(line) ?: return@forEach
 
-                // OPTIONAL: drop expired cookies while loading
-                if (cookie.expiresAt <= now) return@forEach
+                // Drop expired on load
+                if (parsed.expiresAt <= now) return@forEach
 
-                val key = "${cookie.name}|${cookie.domain}|${cookie.path}"
+                val baseDomain = toBaseDomain(parsed.domain)
+                val normalized = normalizeCookieToBaseDomain(parsed, baseDomain)
+
+                val key = "${normalized.name}|${baseDomain}|${normalized.path}"
                 val prev = dedup[key]
 
-                // keep the one with later expiry (or keep the latest read if you prefer)
-                if (prev == null || cookie.expiresAt >= prev.expiresAt) {
-                    dedup[key] = cookie
+                // keep the one with later expiry
+                if (prev == null || normalized.expiresAt >= prev.expiresAt) {
+                    dedup[key] = normalized
                 }
             }
         }
 
         cookies.clear()
         dedup.values.forEach { cookie ->
-            cookies.getOrPut(cookie.domain) { mutableListOf() }.add(cookie)
+            val baseDomain = toBaseDomain(cookie.domain)
+            cookies.getOrPut(baseDomain) { mutableListOf() }.add(cookie)
         }
     }
 
@@ -119,25 +153,27 @@ class MyCookieJar(context: Context) : CookieJar {
         printAllCookies()
         println("==============")
 
-        // Dedupe by (name, domain, path), keep the newest expiresAt (and drop expired if you want)
+
         val now = System.currentTimeMillis()
-        val dedup = LinkedHashMap<String, Cookie>()
+        val dedup = LinkedHashMap<String, Cookie>() // (name|baseDomain|path) -> cookie
 
         cookies.values
             .flatten()
             .forEach { cookie ->
-                // OPTIONAL: drop expired cookies while saving
+                // Drop expired on save
                 if (cookie.expiresAt <= now) return@forEach
 
-                val key = "${cookie.name}|${cookie.domain}|${cookie.path}"
+                val baseDomain = toBaseDomain(cookie.domain)
+                val normalized = normalizeCookieToBaseDomain(cookie, baseDomain)
+
+                val key = "${normalized.name}|${baseDomain}|${normalized.path}"
                 val prev = dedup[key]
 
-                if (prev == null || cookie.expiresAt >= prev.expiresAt) {
-                    dedup[key] = cookie
+                if (prev == null || normalized.expiresAt >= prev.expiresAt) {
+                    dedup[key] = normalized
                 }
             }
 
-        // Rewrite file from deduped set
         file.bufferedWriter().use { writer ->
             dedup.values.forEach { cookie ->
                 writer.write(serializeCookie(cookie))
@@ -145,10 +181,11 @@ class MyCookieJar(context: Context) : CookieJar {
             }
         }
 
-        // Keep in-memory jar consistent with what we wrote
+        // keep in-memory aligned with disk
         cookies.clear()
         dedup.values.forEach { cookie ->
-            cookies.getOrPut(cookie.domain) { mutableListOf() }.add(cookie)
+            val baseDomain = toBaseDomain(cookie.domain)
+            cookies.getOrPut(baseDomain) { mutableListOf() }.add(cookie)
         }
 
         println("After:")
@@ -157,31 +194,39 @@ class MyCookieJar(context: Context) : CookieJar {
     }
 
     private fun serializeCookie(cookie: Cookie): String {
+        val baseDomain = toBaseDomain(cookie.domain)
         return listOf(
-            cookie.name, cookie.value, cookie.domain, cookie.path,
-            cookie.expiresAt.toString(), cookie.secure.toString(), cookie.httpOnly.toString()
+            cookie.name,
+            cookie.value,
+            baseDomain,
+            cookie.path,
+            cookie.expiresAt.toString(),
+            cookie.secure.toString(),
+            cookie.httpOnly.toString()
         ).joinToString(";")
     }
 
     private fun parseCookie(line: String): Cookie? {
         val parts = line.split(";")
-        return if (parts.size == 7) {
-            try {
-                Cookie.Builder()
-                    .name(parts[0])
-                    .value(parts[1])
-                    .domain(parts[2])
-                    .path(parts[3])
-                    .expiresAt(parts[4].toLong())
-                    .apply {
-                        if (parts[5].toBoolean()) secure()
-                        if (parts[6].toBoolean()) httpOnly()
-                    }
-                    .build()
-            } catch (e: Exception) {
-                null
-            }
-        } else null
+        if (parts.size != 7) return null
+
+        return try {
+            val baseDomain = toBaseDomain(parts[2])
+
+            Cookie.Builder()
+                .name(parts[0])
+                .value(parts[1])
+                .domain(baseDomain)
+                .path(parts[3])
+                .expiresAt(parts[4].toLong())
+                .apply {
+                    if (parts[5].toBoolean()) secure()
+                    if (parts[6].toBoolean()) httpOnly()
+                }
+                .build()
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun clearCookies() {
@@ -190,24 +235,26 @@ class MyCookieJar(context: Context) : CookieJar {
     }
 
     fun getCookiesForDomain(domain: String): List<Cookie> {
-        return cookies[domain].orEmpty()
+        val baseDomain = toBaseDomain(domain)
+        return cookies[baseDomain].orEmpty()
     }
 
     fun addCookiesManually(domain: String, newCookies: List<Cookie>) {
-//        cookies.getOrPut(domain) { mutableListOf() }.apply {
-//            removeAll { existing -> newCookies.any { it.name == existing.name } }
-//            addAll(newCookies)
-//        }
-//        saveCookiesToFile()
+        val baseDomain = toBaseDomain(domain)
+        val existingCookies = cookies.getOrPut(baseDomain) { mutableListOf() }
 
-        val existingCookies = cookies.getOrPut(domain) { mutableListOf() }
+        // Replace by (name, path) inside base domain
+        newCookies.forEach { incoming ->
+            val newCookie = normalizeCookieToBaseDomain(incoming, baseDomain)
 
-        newCookies.forEach { newCookie ->
-            val existingIndex = existingCookies.indexOfFirst { it.name == newCookie.name }
+            val existingIndex = existingCookies.indexOfFirst {
+                it.name == newCookie.name && it.path == newCookie.path
+            }
+
             if (existingIndex != -1) {
-                existingCookies[existingIndex] = newCookie // Replace existing cookie
+                existingCookies[existingIndex] = newCookie
             } else {
-                existingCookies.add(newCookie) // Add new cookie
+                existingCookies.add(newCookie)
             }
         }
 
@@ -220,11 +267,13 @@ class MyCookieJar(context: Context) : CookieJar {
             return
         }
 
-        println("🍪 Stored cookies in CookieJar:")
-        cookies.forEach { (domain, cookieList) ->
-            println("  ➤ Domain: $domain")
+        println("🍪 Stored cookies in CookieJar (BASE-DOMAIN buckets):")
+        cookies.forEach { (baseDomain, cookieList) ->
+            println("  ➤ Base Domain: $baseDomain")
             cookieList.forEach { cookie ->
-                println("     - ${cookie.name}=${cookie.value}; Path=${cookie.path};  Secure=${cookie.secure}; HttpOnly=${cookie.httpOnly}")
+                println(
+                    "     - ${cookie.name}=${cookie.value}; Domain=${cookie.domain}; Path=${cookie.path}; Secure=${cookie.secure}; HttpOnly=${cookie.httpOnly}; ExpiresAt=${cookie.expiresAt}"
+                )
             }
         }
     }
