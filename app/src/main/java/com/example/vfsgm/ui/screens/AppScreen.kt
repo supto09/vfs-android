@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.vfsgm.ui.components.AppControlAction
 import com.example.vfsgm.ui.components.AppControlPanel
 import com.example.vfsgm.ui.components.AuthControlPanel
 import com.example.vfsgm.ui.components.CloudflareModalWrapper
@@ -41,10 +42,14 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
                 )
 
                 false -> AppControlPanel(
-                    onLoadApplicant = viewModel::loadApplicants,
-                    onAddApplicant = viewModel::addApplicant,
-                    onGenderLoad = viewModel::getGender,
-                    onLogout = viewModel::logout
+                    onAction = { action ->
+                        when (action) {
+                            AppControlAction.LoadApplicants -> viewModel.loadApplicants()
+                            AppControlAction.AddApplicants -> viewModel.addApplicant()
+                            AppControlAction.LoadCalendar -> viewModel.loadCalender()
+                            AppControlAction.Logout -> viewModel.logout()
+                        }
+                    }
                 )
             }
         }

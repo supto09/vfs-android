@@ -14,39 +14,43 @@ import com.example.vfsgm.ui.components.atomics.SolidButtonVariant
 
 @Composable
 fun AppControlPanel(
-    onLoadApplicant: () -> Unit,
-    onAddApplicant: () -> Unit,
-    onGenderLoad: () -> Unit,
-    onLogout: () -> Unit
+    onAction: (AppControlAction) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         SolidButton(
-            onClick = onLoadApplicant,
+            onClick = { onAction(AppControlAction.LoadApplicants) },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Load Applicants")
         }
 
         SolidButton(
-            onClick = onAddApplicant,
+            onClick = { onAction(AppControlAction.AddApplicants) },
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Add Applicants")
         }
 
         SolidButton(
-            onClick = onGenderLoad,
+            onClick = { onAction(AppControlAction.LoadCalendar) },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Get Gender")
+            Text("Load Calender")
         }
 
         SolidButton(
-            onClick = onLogout,
+            onClick = { onAction(AppControlAction.Logout) },
             modifier = Modifier.fillMaxWidth(),
             variant = SolidButtonVariant.Danger
         ) {
             Text("Logout")
         }
     }
+}
+
+sealed interface AppControlAction {
+    data object LoadApplicants : AppControlAction
+    data object AddApplicants : AppControlAction
+    data object LoadCalendar : AppControlAction
+    data object Logout : AppControlAction
 }

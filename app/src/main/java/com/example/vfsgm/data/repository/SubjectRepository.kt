@@ -5,6 +5,7 @@ import com.example.vfsgm.data.dto.Subject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 class SubjectRepository() {
     private val subjectApi = SubjectApi()
@@ -14,6 +15,6 @@ class SubjectRepository() {
 
     suspend fun loadSubject() {
         val data = subjectApi.getSubject()
-        _state.value = data
+        _state.update { data }
     }
 }

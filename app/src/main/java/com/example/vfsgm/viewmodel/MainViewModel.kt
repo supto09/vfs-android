@@ -5,8 +5,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.vfsgm.data.api.ApplicantApi
 import com.example.vfsgm.data.api.AuthApi
+import com.example.vfsgm.data.api.CalenderApi
 import com.example.vfsgm.data.dto.Subject
 import com.example.vfsgm.data.network.PublicIpManager
+import com.example.vfsgm.data.repository.DataRepository
 import com.example.vfsgm.data.repository.SessionRepository
 import com.example.vfsgm.data.repository.SubjectRepository
 import com.example.vfsgm.data.store.TurnstileStore
@@ -22,8 +24,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val subjectRepository = SubjectRepository()
     val subjectState = subjectRepository.state
 
+    private val dataRepository = DataRepository()
+    val dataState = dataRepository.state
+
+
     private val authApi = AuthApi()
     private val applicantApi = ApplicantApi()
+    private val calenderApi = CalenderApi()
 
     init {
         viewModelScope.launch {
@@ -74,9 +81,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         println("AccessToken: $accessToken")
 
         viewModelScope.launch(Dispatchers.IO) {
-            applicantApi.addApplicant(
+            val urn = applicantApi.addApplicant(
                 accessToken = accessToken, subject = subjectState.value
             )
+
+            dataRepository.saveUrn(urn = urn)
         }
     }
 
@@ -90,6 +99,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
     }
+
+    fun loadCalender() {
+        val accessToken = sessionState.value.accessToken ?: return
+        println("AccessToken: $accessToken")
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val availableDates = calenderApi.loadCalender(
+                accessToken = accessToken,
+                subject = subjectState.value,
+                urn = dataState.value.urn
+            )
+
+            dataRepository.saveAvailableDates(dates = availableDates)
+        }
+    }
+
 
     fun logout() {
         viewModelScope.launch(Dispatchers.IO) {
