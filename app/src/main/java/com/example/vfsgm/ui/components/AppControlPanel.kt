@@ -39,6 +39,13 @@ fun AppControlPanel(
         }
 
         SolidButton(
+            onClick = { onAction(AppControlAction.CheckIsSlotAvailable) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Check Is Slot Available")
+        }
+
+        SolidButton(
             onClick = { onAction(AppControlAction.Logout) },
             modifier = Modifier.fillMaxWidth(),
             variant = SolidButtonVariant.Danger
@@ -53,4 +60,5 @@ sealed interface AppControlAction {
     data object AddApplicants : AppControlAction
     data object LoadCalendar : AppControlAction
     data object Logout : AppControlAction
+    data object CheckIsSlotAvailable : AppControlAction
 }

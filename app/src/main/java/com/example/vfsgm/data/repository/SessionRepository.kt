@@ -2,7 +2,7 @@ package com.example.vfsgm.data.repository
 
 import android.content.Context
 import com.example.vfsgm.data.store.AccessTokenStore
-import com.example.vfsgm.dto.SessionState
+import com.example.vfsgm.data.dto.SessionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

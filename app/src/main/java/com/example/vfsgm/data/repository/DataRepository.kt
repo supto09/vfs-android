@@ -1,8 +1,6 @@
 package com.example.vfsgm.data.repository
 
-import com.example.vfsgm.data.api.SubjectApi
-import com.example.vfsgm.data.dto.Subject
-import com.example.vfsgm.dto.DataState
+import com.example.vfsgm.data.dto.DataState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,5 +17,9 @@ class DataRepository() {
 
     suspend fun saveAvailableDates(dates: List<String>) {
         _state.update { it.copy(availableDates = dates) }
+    }
+
+    suspend fun saveEarliestSlotDates(earliestSlotDate: String) {
+        _state.update { it.copy(earliestSlotDate = earliestSlotDate) }
     }
 }

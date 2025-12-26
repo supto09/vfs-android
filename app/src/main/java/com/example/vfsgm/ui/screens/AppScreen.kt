@@ -23,6 +23,7 @@ import com.example.vfsgm.viewmodel.MainViewModel
 @Composable
 fun AppScreen(viewModel: MainViewModel = viewModel()) {
     val sessionState by viewModel.sessionState.collectAsState()
+    val dataState by viewModel.dataState.collectAsState()
 
     Column(
         modifier = Modifier.padding(8.dp),
@@ -31,6 +32,12 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
         CloudflareModalWrapper()
 
         TurnstileWebviewModal()
+
+        Text(
+            text = dataState.toString()
+        )
+
+
 
         AnimatedContent(
             targetState = sessionState.accessToken,
@@ -48,6 +55,7 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
                             AppControlAction.AddApplicants -> viewModel.addApplicant()
                             AppControlAction.LoadCalendar -> viewModel.loadCalender()
                             AppControlAction.Logout -> viewModel.logout()
+                            AppControlAction.CheckIsSlotAvailable -> viewModel.checkIsSlotAvailable()
                         }
                     }
                 )

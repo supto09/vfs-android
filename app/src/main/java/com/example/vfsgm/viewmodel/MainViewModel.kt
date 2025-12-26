@@ -3,18 +3,16 @@ package com.example.vfsgm.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.vfsgm.core.SealedResult
 import com.example.vfsgm.data.api.ApplicantApi
 import com.example.vfsgm.data.api.AuthApi
 import com.example.vfsgm.data.api.CalenderApi
-import com.example.vfsgm.data.dto.Subject
 import com.example.vfsgm.data.network.PublicIpManager
 import com.example.vfsgm.data.repository.DataRepository
 import com.example.vfsgm.data.repository.SessionRepository
 import com.example.vfsgm.data.repository.SubjectRepository
 import com.example.vfsgm.data.store.TurnstileStore
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -63,10 +61,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadApplicants() {
         val accessToken = sessionState.value.accessToken ?: return
-        println("AccessToken: $accessToken")
-
         val subject = subjectState.value
-        println("Subject: $subject")
 
         viewModelScope.launch(Dispatchers.IO) {
             applicantApi.loadApplicants(
@@ -78,7 +73,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addApplicant() {
         val accessToken = sessionState.value.accessToken ?: return
-        println("AccessToken: $accessToken")
 
         viewModelScope.launch(Dispatchers.IO) {
             val urn = applicantApi.addApplicant(
@@ -91,7 +85,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getGender() {
         val accessToken = sessionState.value.accessToken ?: return
-        println("AccessToken: $accessToken")
 
         viewModelScope.launch(Dispatchers.IO) {
             applicantApi.getGender(
@@ -102,16 +95,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadCalender() {
         val accessToken = sessionState.value.accessToken ?: return
-        println("AccessToken: $accessToken")
 
         viewModelScope.launch(Dispatchers.IO) {
-            val availableDates = calenderApi.loadCalender(
+            val result = calenderApi.loadCalender(
                 accessToken = accessToken,
                 subject = subjectState.value,
                 urn = dataState.value.urn
             )
 
-            dataRepository.saveAvailableDates(dates = availableDates)
+            when (result) {
+                is SealedResult.Success -> dataRepository.saveAvailableDates(dates = result.data)
+                is SealedResult.Error -> {
+                    println(result.exception.message)
+                }
+            }
+        }
+    }
+
+    fun checkIsSlotAvailable() {
+        val accessToken = sessionState.value.accessToken ?: return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = calenderApi.checkIsSlotAvailable(
+                accessToken = accessToken,
+                subject = subjectState.value,
+            )
+
+            when (result) {
+                is SealedResult.Success -> {
+                    println("earliest Date Available at: ${result.data}")
+                    result.data?.let {
+                        dataRepository.saveEarliestSlotDates(it)
+                    }
+                }
+
+                is SealedResult.Error -> {
+                    println(result.exception.message)
+                }
+            }
         }
     }
 
