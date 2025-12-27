@@ -72,4 +72,7 @@ dependencies {
 
     // datastore
     implementation("androidx.datastore:datastore-preferences:1.1.7")
+
+    // two captcha
+    implementation("com.github.2captcha:2captcha-java:1.3.1")
 }

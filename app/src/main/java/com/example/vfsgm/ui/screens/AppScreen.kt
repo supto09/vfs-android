@@ -3,9 +3,7 @@ package com.example.vfsgm.ui.screens
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -49,13 +47,15 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
                 )
 
                 false -> AppControlPanel(
+                    dataState = dataState,
                     onAction = { action ->
                         when (action) {
                             AppControlAction.LoadApplicants -> viewModel.loadApplicants()
                             AppControlAction.AddApplicants -> viewModel.addApplicant()
                             AppControlAction.LoadCalendar -> viewModel.loadCalender()
                             AppControlAction.Logout -> viewModel.logout()
-                            AppControlAction.CheckIsSlotAvailable -> viewModel.checkIsSlotAvailable()
+                            AppControlAction.StartCheckIsSlotAvailable -> viewModel.startCheckIsSlotAvailable()
+                            AppControlAction.StopCheckIsSlotAvailable -> viewModel.stopCheckIsSlotAvailable()
                         }
                     }
                 )

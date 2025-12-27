@@ -28,7 +28,7 @@ class AuthApi {
 
     suspend fun login(
         username: String, password: String, cloudflareToken: String
-    ): String {
+    ): String? {
         val encryptedPassword = EncryptionManager.encryptWithRsaOaepSha256(password)
 
         println("Username: $username | Password: $password")
@@ -58,18 +58,23 @@ class AuthApi {
             addHeader("Referer", "https://visa.vfsglobal.com/")
         }.build()
 
-        val call = client.newCall(request)
-        call.await().use { res ->
-            val bodyStr = res.body?.string().orEmpty()
-            println("login response: $bodyStr")
+        try {
+            val call = client.newCall(request)
+            call.await().use { res ->
+                val bodyStr = res.body?.string().orEmpty()
+                println("login response: $bodyStr")
 
-            if (!res.isSuccessful) throw IOException("HTTP ${res.code}: $bodyStr")
+                if (!res.isSuccessful) throw IOException("HTTP ${res.code}: $bodyStr")
 
-            val loginResponse = loginResponseAdapter.fromJson(bodyStr)
-                ?: throw IOException("Failed to parse LoginResponse. Body=$bodyStr")
+                val loginResponse = loginResponseAdapter.fromJson(bodyStr)
+                    ?: throw IOException("Failed to parse LoginResponse. Body=$bodyStr")
 
-            return loginResponse.accessToken
+                return loginResponse.accessToken
+            }
+        } catch (error: Exception){
+            error.printStackTrace()
         }
+        return null
     }
 }
 
