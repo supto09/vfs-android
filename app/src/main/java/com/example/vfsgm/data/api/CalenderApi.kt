@@ -36,6 +36,7 @@ class CalenderApi {
 
     suspend fun checkIsSlotAvailable(
         accessToken: String,
+        username: String,
         subject: Subject,
     ): SealedResult<String?> {
         val requestBodyJson = """
@@ -44,7 +45,7 @@ class CalenderApi {
               "missionCode": "${subject.missionCode.name.lowercase()}",
               "vacCode": "${subject.vacCode.name}",
               "visaCategoryCode": "${subject.visaCategoryCode.name}",
-              "loginUser": "${subject.username}",
+              "loginUser": "$username",
               "roleName": "Individual",             
               "payCode": ""
             }
@@ -99,7 +100,10 @@ class CalenderApi {
 
 
     suspend fun loadCalender(
-        accessToken: String, subject: Subject, urn: String
+        accessToken: String,
+        username: String,
+        subject: Subject,
+        urn: String
     ): SealedResult<List<String>> {
         val todayFormatted = LocalDate.now().format(DateTimeFormatter.ofPattern(DATE_FORMAT))
 
@@ -108,7 +112,7 @@ class CalenderApi {
               "countryCode": "${subject.countryCode.name.lowercase()}",
               "missionCode": "${subject.missionCode.name.lowercase()}",
               "centerCode": "${subject.vacCode.name}",
-              "loginUser": "${subject.username}",
+              "loginUser": "$username",
               "visaCategoryCode": "${subject.visaCategoryCode.name}",
               "fromDate": "$todayFormatted",
               "urn": "$urn",

@@ -1,8 +1,8 @@
 package com.example.vfsgm.data.repository
 
 import android.content.Context
-import com.example.vfsgm.data.store.AccessTokenStore
-import com.example.vfsgm.data.dto.SessionState
+import com.example.vfsgm.data.store.SessionDataStore
+import com.example.vfsgm.data.dto.SessionData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,28 +16,28 @@ import kotlinx.coroutines.launch
 class SessionRepository(
     context: Context
 ) {
-    private val accessTokenStore = AccessTokenStore(context)
+    private val sessionDataStore = SessionDataStore(context)
 
-    private val _state = MutableStateFlow(SessionState())
-    val state: StateFlow<SessionState> = _state.asStateFlow()
+    private val _state = MutableStateFlow<SessionData?>(null)
+    val state: StateFlow<SessionData?> = _state.asStateFlow()
 
     init {
         CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
-            accessTokenStore.accessTokenFlow
+            sessionDataStore.sessionFlow
                 .distinctUntilChanged()
-                .collect { token ->
-                    _state.update { it.copy(accessToken = token) }
+                .collect { session ->
+                    _state.update { session }
                 }
         }
     }
 
 
     suspend fun clearSession() {
-        accessTokenStore.clearToken()
-        _state.update { SessionState() }
+        sessionDataStore.clearToken()
+        _state.update { null }
     }
 
-    suspend fun saveAccessToken(accessToken: String) {
-        accessTokenStore.saveToken(accessToken)
+    suspend fun saveSessionData(sessionData: SessionData) {
+        sessionDataStore.saveSessionData(sessionData)
     }
 }

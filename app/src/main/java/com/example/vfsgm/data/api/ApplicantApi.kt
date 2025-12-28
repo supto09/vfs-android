@@ -75,6 +75,7 @@ class ApplicantApi {
 
     suspend fun addApplicant(
         accessToken: String,
+        username: String,
         subject: Subject
     ): String {
         val requestBodyJson = """
@@ -82,7 +83,7 @@ class ApplicantApi {
           "countryCode": "${subject.countryCode.name.lowercase()}",
           "missionCode": "${subject.missionCode.name.lowercase()}",
           "centerCode": "${subject.vacCode.name}",
-          "loginUser": "${subject.username}",
+          "loginUser": "$username",
           "visaCategoryCode": "${subject.visaCategoryCode.name}",
           "isEdit": false,
           "feeEntryTypeCode": null,
@@ -99,7 +100,7 @@ class ApplicantApi {
                       "selectedSubvisaCategory": null,
                       "Subclasscode": null,
                       "dateOfApplication": null,
-                      "loginUser": "${subject.username}",
+                      "loginUser": "$username",
                       "firstName": "${applicant.firstName}",
                       "employerFirstName": "",
                       "middleName": "",

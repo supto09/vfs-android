@@ -38,10 +38,10 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
 
 
         AnimatedContent(
-            targetState = sessionState.accessToken,
+            targetState = sessionState,
             label = "AuthStateTransition"
         ) { accessToken ->
-            when (accessToken.isNullOrEmpty()) {
+            when (accessToken == null) {
                 true -> AuthControlPanel(
                     onLoginClick = viewModel::login
                 )

@@ -10,7 +10,10 @@ import com.example.vfsgm.core.TurnstileService
 import com.example.vfsgm.data.api.ApplicantApi
 import com.example.vfsgm.data.api.AuthApi
 import com.example.vfsgm.data.api.CalenderApi
+import com.example.vfsgm.data.api.SubjectApi
 import com.example.vfsgm.data.dto.JobState
+import com.example.vfsgm.data.dto.SessionData
+import com.example.vfsgm.data.dto.Subject
 import com.example.vfsgm.data.network.PublicIpManager
 import com.example.vfsgm.data.repository.DataRepository
 import com.example.vfsgm.data.repository.SessionRepository
@@ -21,6 +24,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val sessionRepository = SessionRepository(application.applicationContext)
@@ -33,6 +37,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val dataState = dataRepository.state
 
 
+    private val subjectApi = SubjectApi()
     private val authApi = AuthApi()
     private val applicantApi = ApplicantApi()
     private val calenderApi = CalenderApi()
@@ -77,11 +82,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 //                        startCheckIsSlotAvailable()
                     }
                 } catch (e: Exception) {
-                    // optional: log or handle
                     e.printStackTrace()
                 }
 
-                delay(5 * 60 * 1000L) // 15 minutes
+                delay(25 * 60 * 1000L) // 15 minutes
             }
         }
     }
@@ -92,73 +96,114 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 
+    private suspend fun attemptLoginOnce(subject: Subject): Boolean {
+        val leasedAccount = when (val res = subjectApi.leaseAccount(subject)) {
+            is SealedResult.Success -> res.data
+            is SealedResult.Error -> null
+        } ?: run {
+            println("Lease failed: no account found")
+            return false
+        }
+
+        println("LeasedAccount: $leasedAccount")
+
+        val cloudflareToken = TurnstileService.solveTurnstile() ?: run {
+            println("Cloudflare token load failed")
+            return false
+        }
+
+        val accessToken = authApi.login(
+            username = leasedAccount.email,
+            password = leasedAccount.password,
+            cloudflareToken = cloudflareToken
+        )
+
+        if (accessToken.isNullOrEmpty()) {
+            println("Login failed for ${leasedAccount.email}")
+            subjectApi.reportBlock(leasedAccount.email, subject = subject)
+
+            return false
+        }
+
+        sessionRepository.saveSessionData(
+            SessionData(
+                accessToken = accessToken,
+                username = leasedAccount.email
+            )
+        )
+        return true
+    }
+
     fun login(onLoginComplete: (() -> Unit)? = null) {
         viewModelScope.launch(Dispatchers.IO) {
-//            val cloudflareToken = TurnstileStore.readToken()
-            val cloudflareToken = TurnstileService.solveTurnstile() ?: ""
-            println("Cloudflare token found: $cloudflareToken")
-
             val subject = subjectState.value
-            val accessToken = authApi.login(
-                username = subject.username,
-                password = subject.password,
-                cloudflareToken = cloudflareToken
-            )
 
-            when (!accessToken.isNullOrEmpty()) {
-                true -> {
-                    sessionRepository.saveAccessToken(accessToken)
-                    delay(2000L)
-                    onLoginComplete?.invoke()
+            val maxAttempts = 5
+            var delayMs = 1000L
+
+            repeat(maxAttempts) { attemptIndex ->
+                if (!isActive) return@launch
+
+                val ok = try {
+                    attemptLoginOnce(subject)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    false
                 }
 
-                false -> {
+                if (ok) {
+                    delay(1000L)
+                    withContext(Dispatchers.Main) { onLoginComplete?.invoke() }
+                    return@launch
+                }
 
+                val isLast = attemptIndex == maxAttempts - 1
+                if (!isLast) {
+                    // simple backoff
+                    delay(delayMs)
+                    delayMs = (delayMs * 2).coerceAtMost(15_000L)
                 }
             }
+
+            println("Login failed after $maxAttempts attempts.")
         }
     }
 
     fun loadApplicants() {
-        val accessToken = sessionState.value.accessToken ?: return
-        val subject = subjectState.value
+        val sessionData = sessionState.value ?: return
 
         viewModelScope.launch(Dispatchers.IO) {
             applicantApi.loadApplicants(
-                accessToken = accessToken,
-                username = subjectState.value.username,
+                accessToken = sessionData.accessToken,
+                username = sessionData.username,
             )
         }
     }
 
     fun addApplicant() {
-        val accessToken = sessionState.value.accessToken ?: return
+        val sessionData = sessionState.value ?: return
 
         viewModelScope.launch(Dispatchers.IO) {
             val urn = applicantApi.addApplicant(
-                accessToken = accessToken, subject = subjectState.value
+                accessToken = sessionData.accessToken,
+                username = sessionData.username,
+                subject = subjectState.value
             )
 
             dataRepository.saveUrn(urn = urn)
         }
     }
 
-    fun getGender() {
-        val accessToken = sessionState.value.accessToken ?: return
-
-        viewModelScope.launch(Dispatchers.IO) {
-            applicantApi.getGender(
-                accessToken = accessToken,
-            )
-        }
-    }
 
     fun loadCalender() {
-        val accessToken = sessionState.value.accessToken ?: return
+        val sessionData = sessionState.value ?: return
 
         viewModelScope.launch(Dispatchers.IO) {
             val result = calenderApi.loadCalender(
-                accessToken = accessToken, subject = subjectState.value, urn = dataState.value.urn
+                accessToken = sessionData.accessToken,
+                username = sessionData.username,
+                subject = subjectState.value,
+                urn = dataState.value.urn
             )
 
             when (result) {
@@ -173,7 +218,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startCheckIsSlotAvailable() {
         println("startCheckIsSlotAvailable")
-        val accessToken = sessionState.value.accessToken ?: return
+        val sessionData = sessionState.value ?: return
 
         // Prevent double-start
         if (checkSlotJob?.isActive == true) return
@@ -184,7 +229,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         checkSlotJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
                 val result = calenderApi.checkIsSlotAvailable(
-                    accessToken = accessToken,
+                    accessToken = sessionData.accessToken,
+                    username = sessionData.username,
                     subject = subjectState.value,
                 )
 
@@ -201,7 +247,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // ⏱ wait 30 seconds AFTER completion
+                // ⏱ wait 3 min AFTER completion
                 delay((3 * 60_000L) + jitterService.nextDelayMillis())
             }
         }
