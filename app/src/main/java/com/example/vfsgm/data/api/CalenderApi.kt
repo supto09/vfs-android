@@ -1,8 +1,10 @@
 package com.example.vfsgm.data.api
 
 import com.example.vfsgm.core.ClientSourceManager
+import com.example.vfsgm.core.FirebaseLogService
 import com.example.vfsgm.core.SealedResult
 import com.example.vfsgm.data.constants.DATE_FORMAT
+import com.example.vfsgm.data.dto.AppConfig
 import com.example.vfsgm.data.dto.Subject
 import com.example.vfsgm.data.network.NewOkHttpClient
 import com.example.vfsgm.data.network.await
@@ -38,6 +40,7 @@ class CalenderApi {
         accessToken: String,
         username: String,
         subject: Subject,
+        appConfig: AppConfig
     ): SealedResult<String?> {
         val requestBodyJson = """
             {
@@ -50,6 +53,11 @@ class CalenderApi {
               "payCode": ""
             }
         """.trimIndent()
+
+        FirebaseLogService.log(
+            appConfig.deviceIndex,
+            "CheckIsSlotAvailable"
+        )
 
         val mediaType = "application/json;charset=UTF-8".toMediaType()
         val requestBody = requestBodyJson.toRequestBody(mediaType)
@@ -73,6 +81,10 @@ class CalenderApi {
             client.newCall(request).await().use { res ->
                 val bodyStr = res.body?.string().orEmpty()
                 println("CheckSlotAvailable Response: $bodyStr")
+                FirebaseLogService.log(
+                    appConfig.deviceIndex,
+                    "CheckSlotAvailable Code:${res.code} response: $bodyStr"
+                )
 
                 if (!res.isSuccessful) throw IOException("HTTP ${res.code}: $bodyStr")
 
@@ -88,6 +100,12 @@ class CalenderApi {
                         )
                     }
                     ?.format(DateTimeFormatter.ofPattern(DATE_FORMAT))
+
+                FirebaseLogService.log(
+                    appConfig.deviceIndex,
+                    "EarliestDate: $earliestDate"
+                )
+
 
                 SealedResult.Success(earliestDate)
             }

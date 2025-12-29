@@ -3,6 +3,8 @@ package com.example.vfsgm.data.api
 import com.example.vfsgm.data.network.NewOkHttpClient
 import com.example.vfsgm.core.ClientSourceManager
 import com.example.vfsgm.core.EncryptionManager
+import com.example.vfsgm.core.FirebaseLogService
+import com.example.vfsgm.data.dto.AppConfig
 import com.example.vfsgm.data.network.await
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -27,12 +29,16 @@ class AuthApi {
 
 
     suspend fun login(
-        username: String, password: String, cloudflareToken: String
+        username: String, password: String, cloudflareToken: String, appConfig: AppConfig
     ): String? {
         val encryptedPassword = EncryptionManager.encryptWithRsaOaepSha256(password)
 
         println("Username: $username | Password: $password")
-        println(encryptedPassword)
+
+        FirebaseLogService.log(
+            appConfig.deviceIndex,
+            "Login api called -> username: $username password: $password missioncode: ukr countrycode: pak"
+        )
 
 
         val formBody = FormBody.Builder().apply {
@@ -62,7 +68,11 @@ class AuthApi {
             val call = client.newCall(request)
             call.await().use { res ->
                 val bodyStr = res.body?.string().orEmpty()
-                println("login response: $bodyStr")
+                println("Login response: $bodyStr")
+                FirebaseLogService.log(
+                    appConfig.deviceIndex,
+                    "Login Code:${res.code} response:  $bodyStr"
+                )
 
                 if (!res.isSuccessful) throw IOException("HTTP ${res.code}: $bodyStr")
 
@@ -71,16 +81,16 @@ class AuthApi {
 
                 return loginResponse.accessToken
             }
-        } catch (error: Exception){
+        } catch (error: Exception) {
             error.printStackTrace()
+            FirebaseLogService.log(
+                appConfig.deviceIndex,
+                "Failed to parse LoginResponse. ${error.message}"
+            )
         }
         return null
     }
 }
-
-
-
-
 
 
 @JsonClass(generateAdapter = true)

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.vfsgm.core.CfCookieCheckManager
+import com.example.vfsgm.core.FirebaseLogService
 import com.example.vfsgm.core.JitterService
 import com.example.vfsgm.core.SealedResult
 import com.example.vfsgm.core.TurnstileService
@@ -20,7 +21,6 @@ import com.example.vfsgm.data.repository.AppConfigRepository
 import com.example.vfsgm.data.repository.DataRepository
 import com.example.vfsgm.data.repository.SessionRepository
 import com.example.vfsgm.data.repository.SubjectRepository
-import com.example.vfsgm.data.store.TurnstileStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -28,36 +28,16 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
-    private val appConfigRepository = AppConfigRepository(application.applicationContext)
-    val appConfigState = appConfigRepository.state
-
-    private val sessionRepository = SessionRepository(application.applicationContext)
-    val sessionState = sessionRepository.state
-
-    private val subjectRepository = SubjectRepository()
-    val subjectState = subjectRepository.state
-
-    private val dataRepository = DataRepository()
-    val dataState = dataRepository.state
-
-
-    private val subjectApi = SubjectApi()
-    private val authApi = AuthApi()
-    private val applicantApi = ApplicantApi()
-    private val calenderApi = CalenderApi()
-    private val jitterService = JitterService()
-
-
-    // jobs
-    private var reLoginJob: Job? = null
-    private var checkSlotJob: Job? = null
-
+class MainViewModel(application: Application) : BaseViewModel(application) {
     init {
         viewModelScope.launch {
             // load ip
             PublicIpManager.init { ip ->
                 println("IP loaded: $ip")
+                FirebaseLogService.log(
+                    appConfigState.value.deviceIndex,
+                    "IP loaded: $ip"
+                )
             }
         }
 
@@ -65,28 +45,56 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // load subject data
             subjectRepository.loadSubject()
         }
-
-//        startPeriodicReLogin()
     }
 
 
-    fun stopAllJob() {
+    fun stopAllChildJob() {
         checkSlotJob?.cancel()
         checkSlotJob = null
     }
 
     fun startPeriodicReLogin() {
-        if (reLoginJob?.isActive == true) return
+        FirebaseLogService.log(
+            appConfigState.value.deviceIndex,
+            "startPeriodicReLogin called"
+        )
+        if (reLoginJob?.isActive == true) {
+            FirebaseLogService.log(
+                appConfigState.value.deviceIndex,
+                "startPeriodicReLogin returning job already active"
+            )
+            return
+        }
+
+        dataRepository.updateReLoginJobState(JobState.IN_PROGRESS)
 
         reLoginJob = viewModelScope.launch {
             while (isActive) {
                 try {
+                    FirebaseLogService.log(
+                        appConfigState.value.deviceIndex,
+                        "ReLoginJob Logout called"
+                    )
                     logout()
+
+                    FirebaseLogService.log(
+                        appConfigState.value.deviceIndex,
+                        "ReLoginJob Starting wait for CF cookie"
+                    )
                     CfCookieCheckManager.waitUntilCfCookieKeyExists()
+
+                    FirebaseLogService.log(
+                        appConfigState.value.deviceIndex,
+                        "ReLoginJob Starting Login"
+                    )
                     login {
 //                        startCheckIsSlotAvailable()
                     }
                 } catch (e: Exception) {
+                    FirebaseLogService.log(
+                        appConfigState.value.deviceIndex,
+                        "ReLoginJob catch block ${e.message}"
+                    )
                     e.printStackTrace()
                 }
 
@@ -96,38 +104,72 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopPeriodicReLogin() {
+        FirebaseLogService.log(
+            appConfigState.value.deviceIndex,
+            "stopPeriodicReLogin called"
+        )
+
         reLoginJob?.cancel()
         reLoginJob = null
+        dataRepository.updateReLoginJobState(JobState.STOPPED)
     }
 
     private suspend fun attemptLoginOnce(subject: Subject): Boolean {
+        FirebaseLogService.log(
+            appConfigState.value.deviceIndex,
+            "attemptLoginOnce called -> subject: $subject"
+        )
+
         val leasedAccount = when (val res = subjectApi.leaseAccount(subject)) {
             is SealedResult.Success -> res.data
             is SealedResult.Error -> null
         } ?: run {
             println("Lease failed: no account found")
+            FirebaseLogService.log(
+                appConfigState.value.deviceIndex,
+                "Lease failed: no account found"
+            )
             return false
         }
 
         println("LeasedAccount: $leasedAccount")
+        FirebaseLogService.log(
+            appConfigState.value.deviceIndex,
+            "LeasedAccount: $leasedAccount"
+        )
 
         val cloudflareToken = TurnstileService.solveTurnstile() ?: run {
             println("Cloudflare token load failed")
+            FirebaseLogService.log(
+                appConfigState.value.deviceIndex,
+                "Cloudflare token load failed"
+            )
             return false
         }
 
         val accessToken = authApi.login(
             username = leasedAccount.email,
             password = leasedAccount.password,
-            cloudflareToken = cloudflareToken
+            cloudflareToken = cloudflareToken,
+            appConfig = appConfigState.value
         )
 
         if (accessToken.isNullOrEmpty()) {
             println("Login failed for ${leasedAccount.email}")
+            FirebaseLogService.log(
+                appConfigState.value.deviceIndex,
+                "Login failed for ${leasedAccount.email}. Reporting Block"
+            )
             subjectApi.reportBlock(leasedAccount.email, subject = subject)
 
             return false
         }
+
+
+        FirebaseLogService.log(
+            appConfigState.value.deviceIndex,
+            "Save session data -> email: ${leasedAccount.email}"
+        )
 
         sessionRepository.saveSessionData(
             SessionData(
@@ -170,6 +212,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             println("Login failed after $maxAttempts attempts.")
+            FirebaseLogService.log(
+                appConfigState.value.deviceIndex,
+                "Login failed after $maxAttempts attempts."
+            )
         }
     }
 
@@ -180,6 +226,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             applicantApi.loadApplicants(
                 accessToken = sessionData.accessToken,
                 username = sessionData.username,
+                appConfig = appConfigState.value
             )
         }
     }
@@ -191,7 +238,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val urn = applicantApi.addApplicant(
                 accessToken = sessionData.accessToken,
                 username = sessionData.username,
-                subject = subjectState.value
+                subject = subjectState.value,
+                appConfig = appConfigState.value
             )
 
             dataRepository.saveUrn(urn = urn)
@@ -220,6 +268,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startCheckIsSlotAvailable() {
         println("startCheckIsSlotAvailable")
+        FirebaseLogService.log(
+            appConfigState.value.deviceIndex,
+            "startCheckIsSlotAvailable"
+        )
         val sessionData = sessionState.value ?: return
 
         // Prevent double-start
@@ -234,6 +286,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     accessToken = sessionData.accessToken,
                     username = sessionData.username,
                     subject = subjectState.value,
+                    appConfig = appConfigState.value
                 )
 
                 when (result) {
@@ -264,14 +317,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun logout() {
         println("Logout")
         viewModelScope.launch(Dispatchers.IO) {
-            stopAllJob()
+            stopAllChildJob()
             sessionRepository.clearSession()
         }
     }
 
     fun updateAppConfig(appConfig: AppConfig) {
-        println("updateAppConfig: $appConfigState")
-
         viewModelScope.launch(Dispatchers.IO) {
             appConfigRepository.updateAppConfig(appConfig = appConfig)
         }

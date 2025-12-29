@@ -9,5 +9,6 @@ data class DataState(
     val availableDates: List<String> = emptyList(),
 
 
+    val reLoginJobRunning: JobState = JobState.NOT_STARTED,
     val checkSlotJobRunning: JobState = JobState.NOT_STARTED
 )

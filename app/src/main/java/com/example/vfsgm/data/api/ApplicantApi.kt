@@ -2,6 +2,8 @@ package com.example.vfsgm.data.api
 
 import com.example.vfsgm.data.network.NewOkHttpClient
 import com.example.vfsgm.core.ClientSourceManager
+import com.example.vfsgm.core.FirebaseLogService
+import com.example.vfsgm.data.dto.AppConfig
 import com.example.vfsgm.data.dto.Subject
 import com.example.vfsgm.data.network.PublicIpManager
 import com.example.vfsgm.data.network.await
@@ -31,7 +33,7 @@ class ApplicantApi {
     }
 
 
-    fun loadApplicants(accessToken: String, username: String) {
+    fun loadApplicants(accessToken: String, username: String, appConfig: AppConfig) {
         val requestBodyJson = """
             {
               "countryCode": "pak",
@@ -41,6 +43,11 @@ class ApplicantApi {
               "loginUser": "$username"
             }
             """.trimIndent()
+
+        FirebaseLogService.log(
+            appConfig.deviceIndex,
+            "LoadApplicants: $requestBodyJson"
+        )
 
         val mediaType = "application/json;charset=UTF-8".toMediaType()
         val requestBody = requestBodyJson.toRequestBody(mediaType)
@@ -68,6 +75,11 @@ class ApplicantApi {
                 response.use {
                     println("Status: ${it.code}")
                     println(it.body?.string())
+
+                    FirebaseLogService.log(
+                        appConfig.deviceIndex,
+                        "LoadApplicants: Status: ${it.code} Body: ${it.body}"
+                    )
                 }
             }
         })
@@ -76,7 +88,8 @@ class ApplicantApi {
     suspend fun addApplicant(
         accessToken: String,
         username: String,
-        subject: Subject
+        subject: Subject,
+        appConfig: AppConfig
     ): String {
         val requestBodyJson = """
         {
@@ -181,6 +194,14 @@ class ApplicantApi {
                 .replace("\r", "")
         )
 
+        FirebaseLogService.log(
+            appConfig.deviceIndex,
+            "AddApplicants: requestBodyJson: ${
+                requestBodyJson.replace("\n", "")
+                    .replace("\r", "")
+            }"
+        )
+
 
         val mediaType = "application/json;charset=UTF-8".toMediaType()
         val requestBody = requestBodyJson.toRequestBody(mediaType)
@@ -202,7 +223,11 @@ class ApplicantApi {
         val call = client.newCall(request)
         call.await().use { res ->
             val bodyStr = res.body?.string().orEmpty()
-            println("Add Applicant Response: $bodyStr")
+            println("Add Applicant Code: ${res.code}: Response: $bodyStr")
+            FirebaseLogService.log(
+                appConfig.deviceIndex,
+                "Add Applicant Response: $bodyStr"
+            )
 
             if (!res.isSuccessful) throw IOException("HTTP ${res.code}: $bodyStr")
 

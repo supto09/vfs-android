@@ -28,4 +28,8 @@ class DataRepository() {
         _state.update { it.copy(checkSlotJobRunning = jobState) }
     }
 
+    fun updateReLoginJobState(jobState: JobState) {
+        _state.update { it.copy(reLoginJobRunning = jobState) }
+    }
+
 }

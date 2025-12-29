@@ -29,11 +29,16 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
     ) {
 
         SystemControlPanel(
-            appConfig = appConfigState, onAction = { systemControlAction ->
+            appConfig = appConfigState,
+            dataState = dataState,
+            onAction = { systemControlAction ->
                 when (systemControlAction) {
                     is SystemControlAction.AppConfigChangeRequest -> viewModel.updateAppConfig(
                         systemControlAction.appConfig
                     )
+
+                    SystemControlAction.StartReLogin -> viewModel.startPeriodicReLogin()
+                    SystemControlAction.StopReLogin -> viewModel.stopPeriodicReLogin()
                 }
             })
 
