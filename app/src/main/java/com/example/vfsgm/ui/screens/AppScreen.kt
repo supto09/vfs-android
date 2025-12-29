@@ -11,35 +11,38 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.vfsgm.ui.components.AppControlAction
-import com.example.vfsgm.ui.components.AppControlPanel
-import com.example.vfsgm.ui.components.AuthControlPanel
-import com.example.vfsgm.ui.components.CloudflareModalWrapper
-import com.example.vfsgm.ui.components.TurnstileWebviewModal
+import com.example.vfsgm.ui.components.organism.AppControlAction
+import com.example.vfsgm.ui.components.organism.AppControlPanel
+import com.example.vfsgm.ui.components.organism.AuthControlPanel
+import com.example.vfsgm.ui.components.organism.SystemControlAction
+import com.example.vfsgm.ui.components.organism.SystemControlPanel
 import com.example.vfsgm.viewmodel.MainViewModel
 
 @Composable
 fun AppScreen(viewModel: MainViewModel = viewModel()) {
     val sessionState by viewModel.sessionState.collectAsState()
     val dataState by viewModel.dataState.collectAsState()
+    val appConfigState by viewModel.appConfigState.collectAsState()
 
     Column(
-        modifier = Modifier.padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        CloudflareModalWrapper()
 
-        TurnstileWebviewModal()
+        SystemControlPanel(
+            appConfig = appConfigState, onAction = { systemControlAction ->
+                when (systemControlAction) {
+                    is SystemControlAction.AppConfigChangeRequest -> viewModel.updateAppConfig(
+                        systemControlAction.appConfig
+                    )
+                }
+            })
 
         Text(
-            text = dataState.toString()
+            text = appConfigState.toString()
         )
 
-
-
         AnimatedContent(
-            targetState = sessionState,
-            label = "AuthStateTransition"
+            targetState = sessionState, label = "AuthStateTransition"
         ) { accessToken ->
             when (accessToken == null) {
                 true -> AuthControlPanel(
@@ -47,8 +50,7 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
                 )
 
                 false -> AppControlPanel(
-                    dataState = dataState,
-                    onAction = { action ->
+                    dataState = dataState, onAction = { action ->
                         when (action) {
                             AppControlAction.LoadApplicants -> viewModel.loadApplicants()
                             AppControlAction.AddApplicants -> viewModel.addApplicant()
@@ -57,8 +59,7 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
                             AppControlAction.StartCheckIsSlotAvailable -> viewModel.startCheckIsSlotAvailable()
                             AppControlAction.StopCheckIsSlotAvailable -> viewModel.stopCheckIsSlotAvailable()
                         }
-                    }
-                )
+                    })
             }
         }
     }

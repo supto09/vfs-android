@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "170155052614",
+    "project_id": "vfs-gm",
+    "storage_bucket": "vfs-gm.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:170155052614:android:bc669361fd765c67f48447",
+        "android_client_info": {
+          "package_name": "com.example.vfsgm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCQVyl6fdhusxObu1GW6B3tLfmZjcxoJ40"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

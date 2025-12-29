@@ -11,10 +11,12 @@ import com.example.vfsgm.data.api.ApplicantApi
 import com.example.vfsgm.data.api.AuthApi
 import com.example.vfsgm.data.api.CalenderApi
 import com.example.vfsgm.data.api.SubjectApi
+import com.example.vfsgm.data.dto.AppConfig
 import com.example.vfsgm.data.dto.JobState
 import com.example.vfsgm.data.dto.SessionData
 import com.example.vfsgm.data.dto.Subject
 import com.example.vfsgm.data.network.PublicIpManager
+import com.example.vfsgm.data.repository.AppConfigRepository
 import com.example.vfsgm.data.repository.DataRepository
 import com.example.vfsgm.data.repository.SessionRepository
 import com.example.vfsgm.data.repository.SubjectRepository
@@ -27,6 +29,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
+    private val appConfigRepository = AppConfigRepository(application.applicationContext)
+    val appConfigState = appConfigRepository.state
+
     private val sessionRepository = SessionRepository(application.applicationContext)
     val sessionState = sessionRepository.state
 
@@ -61,7 +66,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             subjectRepository.loadSubject()
         }
 
-        startPeriodicReLogin()
+//        startPeriodicReLogin()
     }
 
 
@@ -94,7 +99,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         reLoginJob?.cancel()
         reLoginJob = null
     }
-
 
     private suspend fun attemptLoginOnce(subject: Subject): Boolean {
         val leasedAccount = when (val res = subjectApi.leaseAccount(subject)) {
@@ -194,7 +198,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-
     fun loadCalender() {
         val sessionData = sessionState.value ?: return
 
@@ -214,7 +217,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-
 
     fun startCheckIsSlotAvailable() {
         println("startCheckIsSlotAvailable")
@@ -253,19 +255,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-
     fun stopCheckIsSlotAvailable() {
         checkSlotJob?.cancel()
         // change the job state
         dataRepository.updateCheckSlotJobState(JobState.STOPPED)
     }
 
-
     fun logout() {
         println("Logout")
         viewModelScope.launch(Dispatchers.IO) {
             stopAllJob()
             sessionRepository.clearSession()
+        }
+    }
+
+    fun updateAppConfig(appConfig: AppConfig) {
+        println("updateAppConfig: $appConfigState")
+
+        viewModelScope.launch(Dispatchers.IO) {
+            appConfigRepository.updateAppConfig(appConfig = appConfig)
         }
     }
 }

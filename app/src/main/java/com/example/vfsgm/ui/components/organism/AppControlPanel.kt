@@ -1,4 +1,4 @@
-package com.example.vfsgm.ui.components
+package com.example.vfsgm.ui.components.organism
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,7 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.vfsgm.data.dto.DataState
 import com.example.vfsgm.data.dto.JobState
-import com.example.vfsgm.ui.components.atomics.SolidButton
+import com.example.vfsgm.ui.components.atomics.MySolidButton
 import com.example.vfsgm.ui.components.atomics.SolidButtonVariant
 
 @Composable
@@ -19,21 +19,21 @@ fun AppControlPanel(
     onAction: (AppControlAction) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SolidButton(
+        MySolidButton(
             onClick = { onAction(AppControlAction.LoadApplicants) },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Load Applicants")
         }
 
-        SolidButton(
+        MySolidButton(
             onClick = { onAction(AppControlAction.AddApplicants) },
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Add Applicants")
         }
 
-        SolidButton(
+        MySolidButton(
             onClick = { onAction(AppControlAction.LoadCalendar) },
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -42,7 +42,7 @@ fun AppControlPanel(
 
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SolidButton(
+            MySolidButton(
                 onClick = { onAction(AppControlAction.StartCheckIsSlotAvailable) },
                 modifier = Modifier.weight(2f),
                 enabled = dataState.checkSlotJobRunning !== JobState.IN_PROGRESS
@@ -50,7 +50,7 @@ fun AppControlPanel(
                 Text("Check Slot")
             }
 
-            SolidButton(
+            MySolidButton(
                 onClick = { onAction(AppControlAction.StopCheckIsSlotAvailable) },
                 modifier = Modifier.weight(1f),
             ) {
@@ -59,7 +59,7 @@ fun AppControlPanel(
         }
 
 
-        SolidButton(
+        MySolidButton(
             onClick = { onAction(AppControlAction.Logout) },
             modifier = Modifier.fillMaxWidth(),
             variant = SolidButtonVariant.Danger

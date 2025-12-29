@@ -33,7 +33,7 @@ enum class SolidButtonVariant {
 }
 
 @Composable
-fun SolidButton(
+fun MySolidButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     variant: SolidButtonVariant = SolidButtonVariant.Regular,
