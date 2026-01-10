@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.vfsgm.core.CfCookieCheckManager
+import com.example.vfsgm.core.FirebaseDataService
 import com.example.vfsgm.core.FirebaseLogService
 import com.example.vfsgm.core.JitterService
 import com.example.vfsgm.core.SealedResult
@@ -88,7 +89,11 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                         "ReLoginJob Starting Login"
                     )
                     login {
-//                        startCheckIsSlotAvailable()
+                        addApplicant()
+
+                        loadTimeSlot()
+
+                        startCheckIsSlotAvailable()
                     }
                 } catch (e: Exception) {
                     FirebaseLogService.log(
@@ -212,6 +217,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             }
 
             println("Login failed after $maxAttempts attempts.")
+            // TODO sent a critical alert that a device failed to login
             FirebaseLogService.log(
                 appConfigState.value.deviceIndex,
                 "Login failed after $maxAttempts attempts."
@@ -294,6 +300,12 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                         println("earliest Date Available at: ${result.data}")
                         result.data?.let {
                             dataRepository.saveEarliestSlotDates(it)
+
+                            FirebaseDataService.saveEarliestSlotDate(
+                                result.data,
+                                subjectState.value.countryCode,
+                                subjectState.value.missionCode
+                            )
                         }
                     }
 
@@ -313,6 +325,20 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         // change the job state
         dataRepository.updateCheckSlotJobState(JobState.STOPPED)
     }
+
+
+    fun loadTimeSlot() {
+        loadSlotSlob = viewModelScope.launch(Dispatchers.IO) {
+            val earliestSlotDate = FirebaseDataService.readEarliestSlotDate(
+                countryCode = subjectState.value.countryCode,
+                missionCode = subjectState.value.missionCode
+            )
+
+
+            println("Earliest Slot Date received via firebase: $earliestSlotDate")
+        }
+    }
+
 
     fun logout() {
         println("Logout")
