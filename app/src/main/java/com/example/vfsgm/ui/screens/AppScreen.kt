@@ -63,6 +63,8 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
                             AppControlAction.Logout -> viewModel.logout()
                             AppControlAction.StartCheckIsSlotAvailable -> viewModel.startCheckIsSlotAvailable()
                             AppControlAction.StopCheckIsSlotAvailable -> viewModel.stopCheckIsSlotAvailable()
+                            AppControlAction.LoadSlot -> viewModel.loadTimeSlot()
+                            AppControlAction.StopLoadSlot -> viewModel.stopLoadTimeSlot()
                         }
                     })
             }

@@ -58,6 +58,23 @@ fun AppControlPanel(
             }
         }
 
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MySolidButton(
+                onClick = { onAction(AppControlAction.LoadSlot) },
+                modifier = Modifier.weight(2f),
+                enabled = dataState.checkSlotJobRunning !== JobState.IN_PROGRESS
+            ) {
+                Text("Load Slot")
+            }
+
+            MySolidButton(
+                onClick = { onAction(AppControlAction.StopLoadSlot) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Stop")
+            }
+        }
+
 
         MySolidButton(
             onClick = { onAction(AppControlAction.Logout) },
@@ -76,4 +93,6 @@ sealed interface AppControlAction {
     data object Logout : AppControlAction
     data object StartCheckIsSlotAvailable : AppControlAction
     data object StopCheckIsSlotAvailable : AppControlAction
+    data object LoadSlot : AppControlAction
+    data object StopLoadSlot : AppControlAction
 }

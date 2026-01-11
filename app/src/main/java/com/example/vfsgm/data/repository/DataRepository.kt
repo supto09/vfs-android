@@ -16,16 +16,24 @@ class DataRepository() {
         _state.update { it.copy(urn = urn) }
     }
 
-    fun saveAvailableDates(dates: List<String>) {
-        _state.update { it.copy(availableDates = dates) }
-    }
-
     fun saveEarliestSlotDates(earliestSlotDate: String) {
         _state.update { it.copy(earliestSlotDate = earliestSlotDate) }
     }
 
+    fun saveAvailableDates(dates: List<String>) {
+        _state.update { it.copy(availableDates = dates) }
+    }
+
+    fun saveAllocationIds(allocationIds: List<String>) {
+        _state.update { it.copy(allocationIds = allocationIds) }
+    }
+
     fun updateCheckSlotJobState(jobState: JobState) {
         _state.update { it.copy(checkSlotJobRunning = jobState) }
+    }
+
+    fun updateLoadSlotJobState(jobState: JobState) {
+        _state.update { it.copy(loadSlotJobRunning = jobState) }
     }
 
     fun updateReLoginJobState(jobState: JobState) {

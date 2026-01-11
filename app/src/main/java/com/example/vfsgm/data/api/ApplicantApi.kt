@@ -4,6 +4,7 @@ import com.example.vfsgm.data.network.NewOkHttpClient
 import com.example.vfsgm.core.ClientSourceManager
 import com.example.vfsgm.core.FirebaseLogService
 import com.example.vfsgm.data.dto.AppConfig
+import com.example.vfsgm.data.dto.SessionData
 import com.example.vfsgm.data.dto.Subject
 import com.example.vfsgm.data.network.PublicIpManager
 import com.example.vfsgm.data.network.await
@@ -33,14 +34,14 @@ class ApplicantApi {
     }
 
 
-    fun loadApplicants(accessToken: String, username: String, appConfig: AppConfig) {
+    fun loadApplicants(sessionData: SessionData, subject: Subject, appConfig: AppConfig) {
         val requestBodyJson = """
             {
-              "countryCode": "pak",
-              "missionCode": "ukr",
+              "countryCode": "${subject.countryCode}",
+              "missionCode": "${subject.missionCode}",
               "languageCode": "en-US",
               "visaToken": null,
-              "loginUser": "$username"
+              "loginUser": "${sessionData.username}"
             }
             """.trimIndent()
 
@@ -60,7 +61,7 @@ class ApplicantApi {
                     mysteriousPrefix = "GA;"
                 )
             )
-            addHeader("Authorize", accessToken)
+            addHeader("Authorize", sessionData.accessToken)
             addHeader("accept", "application/json, text/plain, */*")
             addHeader("Origin", "https://visa.vfsglobal.com")
             addHeader("Referer", "https://visa.vfsglobal.com/")
@@ -86,8 +87,7 @@ class ApplicantApi {
     }
 
     suspend fun addApplicant(
-        accessToken: String,
-        username: String,
+        sessionData: SessionData,
         subject: Subject,
         appConfig: AppConfig
     ): String {
@@ -96,7 +96,7 @@ class ApplicantApi {
           "countryCode": "${subject.countryCode.name.lowercase()}",
           "missionCode": "${subject.missionCode.name.lowercase()}",
           "centerCode": "${subject.vacCode.name}",
-          "loginUser": "$username",
+          "loginUser": "${sessionData.username}",
           "visaCategoryCode": "${subject.visaCategoryCode.name}",
           "isEdit": false,
           "feeEntryTypeCode": null,
@@ -113,7 +113,7 @@ class ApplicantApi {
                       "selectedSubvisaCategory": null,
                       "Subclasscode": null,
                       "dateOfApplication": null,
-                      "loginUser": "$username",
+                      "loginUser": "${sessionData.username}",
                       "firstName": "${applicant.firstName}",
                       "employerFirstName": "",
                       "middleName": "",
@@ -214,7 +214,7 @@ class ApplicantApi {
                     mysteriousPrefix = "GA;"
                 )
             )
-            addHeader("Authorize", accessToken)
+            addHeader("Authorize", sessionData.accessToken)
             addHeader("accept", "application/json, text/plain, */*")
             addHeader("Origin", "https://visa.vfsglobal.com")
             addHeader("Referer", "https://visa.vfsglobal.com/")

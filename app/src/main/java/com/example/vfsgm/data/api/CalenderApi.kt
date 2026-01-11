@@ -5,6 +5,7 @@ import com.example.vfsgm.core.FirebaseLogService
 import com.example.vfsgm.core.SealedResult
 import com.example.vfsgm.data.constants.DATE_FORMAT
 import com.example.vfsgm.data.dto.AppConfig
+import com.example.vfsgm.data.dto.SessionData
 import com.example.vfsgm.data.dto.Subject
 import com.example.vfsgm.data.network.NewOkHttpClient
 import com.example.vfsgm.data.network.await
@@ -37,8 +38,7 @@ class CalenderApi {
 
 
     suspend fun checkIsSlotAvailable(
-        accessToken: String,
-        username: String,
+        sessionData: SessionData,
         subject: Subject,
         appConfig: AppConfig
     ): SealedResult<String?> {
@@ -48,7 +48,7 @@ class CalenderApi {
               "missionCode": "${subject.missionCode.name.lowercase()}",
               "vacCode": "${subject.vacCode.name}",
               "visaCategoryCode": "${subject.visaCategoryCode.name}",
-              "loginUser": "$username",
+              "loginUser": "${sessionData.username}",
               "roleName": "Individual",             
               "payCode": ""
             }
@@ -70,7 +70,7 @@ class CalenderApi {
                     mysteriousPrefix = "GA;"
                 )
             )
-            addHeader("Authorize", accessToken)
+            addHeader("Authorize", sessionData.accessToken)
             addHeader("accept", "application/json, text/plain, */*")
             addHeader("Origin", "https://visa.vfsglobal.com")
             addHeader("Referer", "https://visa.vfsglobal.com/")
@@ -118,8 +118,7 @@ class CalenderApi {
 
 
     suspend fun loadCalender(
-        accessToken: String,
-        username: String,
+        sessionData: SessionData,
         subject: Subject,
         urn: String
     ): SealedResult<List<String>> {
@@ -130,7 +129,7 @@ class CalenderApi {
               "countryCode": "${subject.countryCode.name.lowercase()}",
               "missionCode": "${subject.missionCode.name.lowercase()}",
               "centerCode": "${subject.vacCode.name}",
-              "loginUser": "$username",
+              "loginUser": "${sessionData.username}",
               "visaCategoryCode": "${subject.visaCategoryCode.name}",
               "fromDate": "$todayFormatted",
               "urn": "$urn",
@@ -149,7 +148,7 @@ class CalenderApi {
                     mysteriousPrefix = "GA;"
                 )
             )
-            addHeader("Authorize", accessToken)
+            addHeader("Authorize", sessionData.accessToken)
             addHeader("accept", "application/json, text/plain, */*")
             addHeader("Origin", "https://visa.vfsglobal.com")
             addHeader("Referer", "https://visa.vfsglobal.com/")
