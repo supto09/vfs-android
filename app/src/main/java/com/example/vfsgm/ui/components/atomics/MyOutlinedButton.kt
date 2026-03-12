@@ -4,7 +4,6 @@ package com.example.vfsgm.ui.components.atomics
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -21,16 +20,16 @@ enum class OutlinedButtonVariant {
 
     fun contentColor(colors: ColorScheme): Color =
         when (this) {
-            Regular -> colors.primary
+            Regular -> colors.onSurface
             Danger -> colors.error
             Warning -> colors.tertiary
         }
 
     fun borderColor(colors: ColorScheme): Color =
         when (this) {
-            Regular -> colors.primary
-            Danger -> colors.error
-            Warning -> colors.tertiary
+            Regular -> colors.outline
+            Danger -> colors.error.copy(alpha = 0.55f)
+            Warning -> colors.tertiary.copy(alpha = 0.55f)
         }
 }
 
@@ -48,7 +47,7 @@ fun MyOutLinedButton(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
-        shape = RoundedCornerShape(6.dp),
+        shape = RoundedCornerShape(14.dp),
         border = BorderStroke(
             width = 1.dp,
             color = variant.borderColor(colors)
