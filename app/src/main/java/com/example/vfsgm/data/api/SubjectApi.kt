@@ -50,7 +50,7 @@ class SubjectApi {
 
 
         val request = Request.Builder().apply {
-            url("https://api.ashulo.org/vfs/accounts/lease")
+            url("https://vfsapi.ashulo.org/accounts/lease")
             post(requestBody)
         }.build()
 
@@ -95,7 +95,7 @@ class SubjectApi {
 
 
         val request = Request.Builder().apply {
-            url("https://api.ashulo.org/vfs/accounts/reportBlocked")
+            url("https://vfsapi.ashulo.org/accounts/reportBlocked")
             post(requestBody)
         }.build()
 
