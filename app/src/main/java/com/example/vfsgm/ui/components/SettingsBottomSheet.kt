@@ -1,5 +1,8 @@
 package com.example.vfsgm.ui.components
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.vfsgm.data.dto.AppConfig
@@ -44,15 +48,29 @@ fun SettingsBottomSheet(
         skipPartiallyExpanded = true
     )
     var showSheet by remember { mutableStateOf(false) }
+    var spinCount by remember { mutableIntStateOf(0) }
+    val gearRotation by animateFloatAsState(
+        targetValue = spinCount * 360f,
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "settingsGearSpin"
+    )
 
     var deviceIndex by remember { mutableIntStateOf(appConfig.deviceIndex) }
 
     Box {
-        IconButton(onClick = { showSheet = true }) {
+        IconButton(
+            onClick = {
+                spinCount += 1
+                showSheet = true
+            }
+        ) {
             Icon(
                 Icons.Rounded.Settings,
                 contentDescription = "Setting",
-                tint = Color(0xFFE85D75)
+                tint = Color(0xFFE85D75),
+                modifier = Modifier.graphicsLayer {
+                    rotationZ = gearRotation
+                }
             )
         }
 
