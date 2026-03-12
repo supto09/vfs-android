@@ -2,7 +2,7 @@ package com.example.vfsgm.core
 
 import com.example.vfsgm.data.constants.CountryCode
 import com.example.vfsgm.data.constants.MissionCode
-import com.example.vfsgm.data.dto.Subject
+import com.example.vfsgm.data.dto.Entry
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
@@ -16,11 +16,11 @@ import kotlin.coroutines.resumeWithException
 object FirebaseDataService {
     fun saveEarliestSlotDate(
         date: String,
-        subject: Subject,
+        entry: Entry,
     ) {
         val db: DatabaseReference =
             FirebaseDatabase.getInstance()
-                .getReference("z_earliest_date/${subject.countryCode}/${subject.missionCode}")
+                .getReference("z_earliest_date/${entry.countryCode}/${entry.missionCode}")
 
         val logEntry = mapOf(
             "date" to date
@@ -34,10 +34,10 @@ object FirebaseDataService {
 
 
     suspend fun readEarliestSlotDate(
-        subject: Subject,
+        entry: Entry,
     ): String = suspendCancellableCoroutine { continuation ->
         val ref = FirebaseDatabase.getInstance()
-            .getReference("z_earliest_date/${subject.countryCode}/${subject.missionCode}/date")
+            .getReference("z_earliest_date/${entry.countryCode}/${entry.missionCode}/date")
 
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {

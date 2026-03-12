@@ -5,8 +5,8 @@ import com.example.vfsgm.core.FirebaseLogService
 import com.example.vfsgm.core.SealedResult
 import com.example.vfsgm.data.constants.DATE_FORMAT
 import com.example.vfsgm.data.dto.AppConfig
+import com.example.vfsgm.data.dto.Entry
 import com.example.vfsgm.data.dto.SessionData
-import com.example.vfsgm.data.dto.Subject
 import com.example.vfsgm.data.network.NewOkHttpClient
 import com.example.vfsgm.data.network.await
 import okhttp3.MediaType.Companion.toMediaType
@@ -39,15 +39,15 @@ class CalenderApi {
 
     suspend fun checkIsSlotAvailable(
         sessionData: SessionData,
-        subject: Subject,
+        entry: Entry,
         appConfig: AppConfig
     ): SealedResult<String?> {
         val requestBodyJson = """
             {
-              "countryCode": "${subject.countryCode.name.lowercase()}",
-              "missionCode": "${subject.missionCode.name.lowercase()}",
-              "vacCode": "${subject.vacCode.name}",
-              "visaCategoryCode": "${subject.visaCategoryCode.name}",
+              "countryCode": "${entry.countryCode.name.lowercase()}",
+              "missionCode": "${entry.missionCode.name.lowercase()}",
+              "vacCode": "${entry.vacCode.name}",
+              "visaCategoryCode": "${entry.visaCategoryCode.name}",
               "loginUser": "${sessionData.username}",
               "roleName": "Individual",             
               "payCode": ""
@@ -119,18 +119,18 @@ class CalenderApi {
 
     suspend fun loadCalender(
         sessionData: SessionData,
-        subject: Subject,
+        entry: Entry,
         urn: String
     ): SealedResult<List<String>> {
         val todayFormatted = LocalDate.now().format(DateTimeFormatter.ofPattern(DATE_FORMAT))
 
         val requestBodyJson = """
             {
-              "countryCode": "${subject.countryCode.name.lowercase()}",
-              "missionCode": "${subject.missionCode.name.lowercase()}",
-              "centerCode": "${subject.vacCode.name}",
+              "countryCode": "${entry.countryCode.name.lowercase()}",
+              "missionCode": "${entry.missionCode.name.lowercase()}",
+              "centerCode": "${entry.vacCode.name}",
               "loginUser": "${sessionData.username}",
-              "visaCategoryCode": "${subject.visaCategoryCode.name}",
+              "visaCategoryCode": "${entry.visaCategoryCode.name}",
               "fromDate": "$todayFormatted",
               "urn": "$urn",
               "payCode": ""

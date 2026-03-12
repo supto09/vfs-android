@@ -11,8 +11,8 @@ Entry Points
 Architecture (MVVM + Repository)
 - UI: Compose screens/components collect StateFlow via `collectAsState()`.
 - ViewModel: `MainViewModel` orchestrates all flows and background jobs.
-- Repositories: Data/Session/AppConfig/Subject store state + persistence.
-- APIs: Auth/Subject/Calendar/Applicant/Slot clients with network calls.
+- Repositories: Data/Session/AppConfig/Entry store state + persistence.
+- APIs: Auth/LeasedAccount/Calendar/Applicant/Slot clients with network calls.
 - Network: OkHttp client with persistent cookie jar.
 
 Core Flows

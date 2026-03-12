@@ -5,8 +5,8 @@ import com.example.vfsgm.core.ClientSourceManager
 import com.example.vfsgm.core.FirebaseLogService
 import com.example.vfsgm.core.SealedResult
 import com.example.vfsgm.data.dto.AppConfig
+import com.example.vfsgm.data.dto.Entry
 import com.example.vfsgm.data.dto.SessionData
-import com.example.vfsgm.data.dto.Subject
 import com.example.vfsgm.data.network.await
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -32,18 +32,18 @@ class SlotApi {
 
     suspend fun loadSlots(
         sessionData: SessionData,
-        subject: Subject,
+        entry: Entry,
         urn: String,
         slotDate: String,
         appConfig: AppConfig
     ): SealedResult<List<String>> {
         val requestBodyJson = """
             {
-                "countryCode": "${subject.countryCode}",
-                "missionCode": "${subject.missionCode}",
-                "centerCode": "${subject.vacCode}",
+                "countryCode": "${entry.countryCode}",
+                "missionCode": "${entry.missionCode}",
+                "centerCode": "${entry.vacCode}",
                 "loginUser": "${sessionData.username}",
-                "visaCategoryCode": "${subject.visaCategoryCode}",
+                "visaCategoryCode": "${entry.visaCategoryCode}",
                 "slotDate": "$slotDate",
                 "urn": "$urn"
             }

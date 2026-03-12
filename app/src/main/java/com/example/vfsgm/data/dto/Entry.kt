@@ -7,9 +7,7 @@ import com.example.vfsgm.data.constants.Nationality
 import com.example.vfsgm.data.constants.VisaApplicationCenterCode
 import com.example.vfsgm.data.constants.VisaCategoryCode
 
-data class Subject(
-    val username: String = "",
-    val password: String = "",
+data class Entry(
     val countryCode: CountryCode = CountryCode.PAK, // from country
     val missionCode: MissionCode = MissionCode.UKR, // target country
     val vacCode: VisaApplicationCenterCode = VisaApplicationCenterCode.LHE,  // application center

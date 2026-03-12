@@ -42,7 +42,7 @@ Files (ViewModel)
 Files (Repositories)
 - `app/src/main/java/com/example/vfsgm/data/repository/AppConfigRepository.kt`: DataStore-backed app config state.
 - `app/src/main/java/com/example/vfsgm/data/repository/SessionRepository.kt`: DataStore-backed session state.
-- `app/src/main/java/com/example/vfsgm/data/repository/SubjectRepository.kt`: loads static Subject from API.
+- `app/src/main/java/com/example/vfsgm/data/repository/EntryRepository.kt`: loads static Entry from API.
 - `app/src/main/java/com/example/vfsgm/data/repository/DataRepository.kt`: in-memory data/job state.
 
 Files (DataStore)
@@ -54,7 +54,7 @@ Files (DTO)
 - `app/src/main/java/com/example/vfsgm/data/dto/AppConfig.kt`: device index.
 - `app/src/main/java/com/example/vfsgm/data/dto/SessionData.kt`: access token + username.
 - `app/src/main/java/com/example/vfsgm/data/dto/DataState.kt`: urn, dates, allocation IDs, job state.
-- `app/src/main/java/com/example/vfsgm/data/dto/Subject.kt`: subject + applicants.
+- `app/src/main/java/com/example/vfsgm/data/dto/Entry.kt`: entry + applicants.
 - `app/src/main/java/com/example/vfsgm/data/dto/LeasedAccount.kt`: leased account credentials.
 
 Files (Constants)
@@ -69,7 +69,7 @@ Files (Constants)
 
 Files (APIs)
 - `app/src/main/java/com/example/vfsgm/data/api/AuthApi.kt`: login with RSA/OAEP + Cloudflare token.
-- `app/src/main/java/com/example/vfsgm/data/api/SubjectApi.kt`: lease account, report block, static subject.
+- `app/src/main/java/com/example/vfsgm/data/api/LeasedAccountApi.kt`: lease account, report block, static entry.
 - `app/src/main/java/com/example/vfsgm/data/api/ApplicantApi.kt`: add/load applicants (OkHttp, JSON body).
 - `app/src/main/java/com/example/vfsgm/data/api/CalenderApi.kt`: check slot availability + load calendar.
 - `app/src/main/java/com/example/vfsgm/data/api/SlotApi.kt`: load timeslots + allocation IDs.

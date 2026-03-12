@@ -16,14 +16,14 @@ Repositories + Store
 - `app/src/main/java/com/example/vfsgm/data/repository/DataRepository.kt`: in-memory data state.
 - `app/src/main/java/com/example/vfsgm/data/repository/SessionRepository.kt`: session state, DataStore.
 - `app/src/main/java/com/example/vfsgm/data/repository/AppConfigRepository.kt`: config state, DataStore.
-- `app/src/main/java/com/example/vfsgm/data/repository/SubjectRepository.kt`: subject state.
+- `app/src/main/java/com/example/vfsgm/data/repository/EntryRepository.kt`: entry state.
 - `app/src/main/java/com/example/vfsgm/data/store/SessionDataStore.kt`: session persistence.
 - `app/src/main/java/com/example/vfsgm/data/store/AppConfigStore.kt`: config persistence.
 - `app/src/main/java/com/example/vfsgm/data/store/TurnstileStore.kt`: Turnstile token persistence.
 
 APIs
 - `app/src/main/java/com/example/vfsgm/data/api/AuthApi.kt`: login/auth calls.
-- `app/src/main/java/com/example/vfsgm/data/api/SubjectApi.kt`: lease account / subject actions.
+- `app/src/main/java/com/example/vfsgm/data/api/LeasedAccountApi.kt`: lease account / entry actions.
 - `app/src/main/java/com/example/vfsgm/data/api/CalenderApi.kt`: calendar endpoints.
 - `app/src/main/java/com/example/vfsgm/data/api/SlotApi.kt`: slot queries.
 - `app/src/main/java/com/example/vfsgm/data/api/ApplicantApi.kt`: applicant CRUD.

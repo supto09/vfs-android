@@ -4,8 +4,8 @@ import com.example.vfsgm.data.network.NewOkHttpClient
 import com.example.vfsgm.core.ClientSourceManager
 import com.example.vfsgm.core.FirebaseLogService
 import com.example.vfsgm.data.dto.AppConfig
+import com.example.vfsgm.data.dto.Entry
 import com.example.vfsgm.data.dto.SessionData
-import com.example.vfsgm.data.dto.Subject
 import com.example.vfsgm.data.network.PublicIpManager
 import com.example.vfsgm.data.network.await
 import com.squareup.moshi.Json
@@ -34,11 +34,11 @@ class ApplicantApi {
     }
 
 
-    fun loadApplicants(sessionData: SessionData, subject: Subject, appConfig: AppConfig) {
+    fun loadApplicants(sessionData: SessionData, entry: Entry, appConfig: AppConfig) {
         val requestBodyJson = """
             {
-              "countryCode": "${subject.countryCode}",
-              "missionCode": "${subject.missionCode}",
+              "countryCode": "${entry.countryCode}",
+              "missionCode": "${entry.missionCode}",
               "languageCode": "en-US",
               "visaToken": null,
               "loginUser": "${sessionData.username}"
@@ -88,23 +88,23 @@ class ApplicantApi {
 
     suspend fun addApplicant(
         sessionData: SessionData,
-        subject: Subject,
+        entry: Entry,
         appConfig: AppConfig
     ): String {
         val requestBodyJson = """
         {
-          "countryCode": "${subject.countryCode.name.lowercase()}",
-          "missionCode": "${subject.missionCode.name.lowercase()}",
-          "centerCode": "${subject.vacCode.name}",
+          "countryCode": "${entry.countryCode.name.lowercase()}",
+          "missionCode": "${entry.missionCode.name.lowercase()}",
+          "centerCode": "${entry.vacCode.name}",
           "loginUser": "${sessionData.username}",
-          "visaCategoryCode": "${subject.visaCategoryCode.name}",
+          "visaCategoryCode": "${entry.visaCategoryCode.name}",
           "isEdit": false,
           "feeEntryTypeCode": null,
           "feeExemptionTypeCode": null,
           "feeExemptionDetailsCode": null,
           "applicantList": [
             ${
-            subject.applicants.joinToString(",") { applicant ->
+            entry.applicants.joinToString(",") { applicant ->
                 """
                     {
                       "urn": "",
@@ -183,11 +183,6 @@ class ApplicantApi {
           "regionCode": null
         }
         """.trimIndent()
-
-
-//        val requestBodyJson = """
-//            {"countryCode":"pak","missionCode":"ukr","centerCode":"ISB","loginUser":"${subject.username}","visaCategoryCode":"IP","isEdit":false,"feeEntryTypeCode":null,"feeExemptionTypeCode":null,"feeExemptionDetailsCode":null,"applicantList":[{"urn":"","arn":"","centerClassCode":null,"selectedSubvisaCategory":null,"Subclasscode":null,"dateOfApplication":null,"loginUser":"${subject.username}","firstName":"XI","employerFirstName":"","middleName":"","lastName":"WION","employerLastName":"","salutation":"","gender":2,"nationalId":null,"VisaToken":null,"employerContactNumber":"","contactNumber":"243467654624336","dialCode":"44","employerDialCode":"","passportNumber":"A34644356","confirmPassportNumber":null,"passportExpirtyDate":"23/12/2027","dateOfBirth":"12/12/1990","emailId":"${subject.username}","employerEmailId":"","nationalityCode":"NZL","state":null,"city":null,"isEndorsedChild":false,"applicantType":0,"addressline1":null,"addressline2":null,"pincode":null,"referenceNumber":null,"vlnNumber":null,"applicantGroupId":0,"parentPassportNumber":"","parentPassportExpiry":"","dateOfDeparture":null,"entryType":"","eoiVisaType":"","passportType":"","vfsReferenceNumber":"","familyReunificationCerificateNumber":"","PVRequestRefNumber":"","PVStatus":"","PVStatusDescription":"","PVCanAllowRetry":true,"PVisVerified":false,"eefRegistrationNumber":"","isAutoRefresh":true,"helloVerifyNumber":"","OfflineCClink":"","idenfystatuscheck":false,"vafStatus":null,"SpecialAssistance":"","AdditionalRefNo":null,"juridictionCode":"","canInitiateVAF":false,"canEditVAF":false,"canDeleteVAF":false,"canDownloadVAF":false,"Retryleft":"","ipAddress":"${PublicIpManager.publicIp}"}],"languageCode":"en-US","isWaitlist":false,"juridictionCode":null,"regionCode":null}
-//        """.trimIndent()
 
         println(
             requestBodyJson.replace("\n", "")

@@ -39,9 +39,9 @@ Compose UI (AppScreen.kt)
     ↓ collectAsState()
 ViewModel (MainViewModel extends BaseViewModel)
     ↓ viewModelScope coroutines
-Repositories (DataRepository, SessionRepository, AppConfigRepository, SubjectRepository)
+Repositories (DataRepository, SessionRepository, AppConfigRepository, EntryRepository)
     ↓
-APIs (AuthApi, SubjectApi, CalenderApi, ApplicantApi)
+APIs (AuthApi, LeasedAccountApi, CalenderApi, ApplicantApi)
     ↓
 OkHttp with Custom CookieJar (MyCookieJar - file-based persistence)
 ```
@@ -61,7 +61,7 @@ OkHttp with Custom CookieJar (MyCookieJar - file-based persistence)
 
 ### Authentication Flow
 
-1. Lease visa account via SubjectApi
+1. Lease visa account via LeasedAccountApi
 2. Solve Cloudflare Turnstile CAPTCHA (2Captcha service or WebView fallback)
 3. Login with RSA/OAEP/SHA256 encrypted password via AuthApi
 4. Store access token in SessionDataStore
@@ -81,7 +81,7 @@ app/src/main/java/com/example/vfsgm/
 │   ├── components/     # organism/ (panels), atomics/ (buttons)
 │   └── theme/          # Material3 theming
 ├── data/
-│   ├── api/            # REST API clients (AuthApi, SubjectApi, etc.)
+│   ├── api/            # REST API clients (AuthApi, LeasedAccountApi, etc.)
 │   ├── repository/     # Data abstraction layer
 │   ├── dto/            # Data classes
 │   ├── store/          # DataStore persistence
@@ -97,3 +97,7 @@ app/src/main/java/com/example/vfsgm/
 - Cancel periodic jobs (`reLoginJob`, `checkSlotJob`) on logout/cleanup
 - Wrap network calls in try-catch and return `SealedResult`
 - Use `collectAsState()` in Compose to observe Flow state
+
+## Commit Messages
+
+- Always use conventional commit messages for git commits.

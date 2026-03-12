@@ -12,17 +12,17 @@ import com.example.vfsgm.core.TurnstileService
 import com.example.vfsgm.data.api.ApplicantApi
 import com.example.vfsgm.data.api.AuthApi
 import com.example.vfsgm.data.api.CalenderApi
+import com.example.vfsgm.data.api.LeasedAccountApi
 import com.example.vfsgm.data.api.SlotApi
-import com.example.vfsgm.data.api.SubjectApi
 import com.example.vfsgm.data.dto.AppConfig
+import com.example.vfsgm.data.dto.Entry
 import com.example.vfsgm.data.dto.JobState
 import com.example.vfsgm.data.dto.SessionData
-import com.example.vfsgm.data.dto.Subject
 import com.example.vfsgm.data.network.PublicIpManager
 import com.example.vfsgm.data.repository.AppConfigRepository
 import com.example.vfsgm.data.repository.DataRepository
+import com.example.vfsgm.data.repository.EntryRepository
 import com.example.vfsgm.data.repository.SessionRepository
-import com.example.vfsgm.data.repository.SubjectRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -43,8 +43,8 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         }
 
         viewModelScope.launch {
-            // load subject data
-            subjectRepository.loadSubject()
+            // load entry data
+            entryRepository.loadEntry()
         }
     }
 
@@ -113,12 +113,12 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         dataRepository.updateReLoginJobState(JobState.STOPPED)
     }
 
-    private suspend fun attemptLoginOnce(subject: Subject): Boolean {
+    private suspend fun attemptLoginOnce(entry: Entry): Boolean {
         FirebaseLogService.log(
-            appConfigState.value.deviceIndex, "attemptLoginOnce called -> subject: $subject"
+            appConfigState.value.deviceIndex, "attemptLoginOnce called -> entry: $entry"
         )
 
-        val leasedAccount = when (val res = subjectApi.leaseAccount(subject)) {
+        val leasedAccount = when (val res = leasedAccountApi.leaseAccount(entry)) {
             is SealedResult.Success -> res.data
             is SealedResult.Error -> null
         } ?: run {
@@ -155,7 +155,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 appConfigState.value.deviceIndex,
                 "Login failed for ${leasedAccount.email}. Reporting Block"
             )
-            subjectApi.reportBlock(leasedAccount.email, subject = subject)
+            leasedAccountApi.reportBlock(leasedAccount.email, entry = entry)
 
             return false
         }
@@ -175,7 +175,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     fun login(onLoginComplete: (() -> Unit)? = null) {
         viewModelScope.launch(Dispatchers.IO) {
-            val subject = subjectState.value
+            val entry = entryState.value
 
             val maxAttempts = 5
             var delayMs = 1000L
@@ -184,7 +184,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 if (!isActive) return@launch
 
                 val ok = try {
-                    attemptLoginOnce(subject)
+                    attemptLoginOnce(entry)
                 } catch (e: Exception) {
                     e.printStackTrace()
                     false
@@ -214,22 +214,22 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     fun loadApplicants() {
         val sessionData = sessionState.value ?: return
-        val subject = subjectState.value
+        val entry = entryState.value
 
         viewModelScope.launch(Dispatchers.IO) {
             applicantApi.loadApplicants(
-                sessionData = sessionData, subject = subject, appConfig = appConfigState.value
+                sessionData = sessionData, entry = entry, appConfig = appConfigState.value
             )
         }
     }
 
     fun addApplicant() {
         val sessionData = sessionState.value ?: return
-        val subject = subjectState.value
+        val entry = entryState.value
 
         viewModelScope.launch(Dispatchers.IO) {
             val urn = applicantApi.addApplicant(
-                sessionData = sessionData, subject = subject, appConfig = appConfigState.value
+                sessionData = sessionData, entry = entry, appConfig = appConfigState.value
             )
 
             dataRepository.saveUrn(urn = urn)
@@ -238,11 +238,11 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     fun loadCalender() {
         val sessionData = sessionState.value ?: return
-        val subject = subjectState.value
+        val entry = entryState.value
 
         viewModelScope.launch(Dispatchers.IO) {
             val result = calenderApi.loadCalender(
-                sessionData = sessionData, subject = subject, urn = dataState.value.urn
+                sessionData = sessionData, entry = entry, urn = dataState.value.urn
             )
 
             when (result) {
@@ -264,7 +264,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             appConfigState.value.deviceIndex, "startCheckIsSlotAvailable"
         )
         val sessionData = sessionState.value ?: return
-        val subject = subjectState.value
+        val entry = entryState.value
 
 
         // change the job state
@@ -274,7 +274,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             while (isActive) {
                 val result = calenderApi.checkIsSlotAvailable(
                     sessionData = sessionData,
-                    subject = subjectState.value,
+                    entry = entryState.value,
                     appConfig = appConfigState.value
                 )
 
@@ -285,7 +285,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                             dataRepository.saveEarliestSlotDates(it)
 
                             FirebaseDataService.saveEarliestSlotDate(
-                                date = result.data, subject = subject
+                                date = result.data, entry = entry
                             )
                         }
                     }
@@ -318,16 +318,16 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         )
 
         val sessionData = sessionState.value ?: return
-        val subject = subjectState.value
+        val entry = entryState.value
 
         loadSlotSlob = viewModelScope.launch(Dispatchers.IO) {
             val earliestSlotDate = FirebaseDataService.readEarliestSlotDate(
-                subject = subject,
+                entry = entry,
             )
 
             val loadSlotResult = slotApi.loadSlots(
                 sessionData = sessionData,
-                subject = subject,
+                entry = entry,
                 urn = dataState.value.urn,
                 slotDate = earliestSlotDate,
                 appConfig = appConfigState.value

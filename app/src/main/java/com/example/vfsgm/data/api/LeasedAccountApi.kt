@@ -8,8 +8,8 @@ import com.example.vfsgm.data.constants.Nationality
 import com.example.vfsgm.data.constants.VisaApplicationCenterCode
 import com.example.vfsgm.data.constants.VisaCategoryCode
 import com.example.vfsgm.data.dto.Applicant
+import com.example.vfsgm.data.dto.Entry
 import com.example.vfsgm.data.dto.LeasedAccount
-import com.example.vfsgm.data.dto.Subject
 import com.example.vfsgm.data.network.await
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -23,7 +23,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 
-class SubjectApi {
+class LeasedAccountApi {
     private val client by lazy(LazyThreadSafetyMode.PUBLICATION) {
         OkHttpClient.Builder().build()
     }
@@ -34,12 +34,12 @@ class SubjectApi {
         moshi.adapter(LeaseAccountResponse::class.java)
     }
 
-    suspend fun leaseAccount(subject: Subject): SealedResult<LeasedAccount> {
+    suspend fun leaseAccount(entry: Entry): SealedResult<LeasedAccount> {
         val requestBodyJson = """
             {
               "leaseOwner": "device-1",
-              "countryCode": "${subject.countryCode.id}",
-              "missionCode": "${subject.missionCode.id}"
+              "countryCode": "${entry.countryCode.id}",
+              "missionCode": "${entry.missionCode.id}"
             }
             """.trimIndent()
 
@@ -79,12 +79,12 @@ class SubjectApi {
         }
     }
 
-    suspend fun reportBlock(email: String, subject: Subject): SealedResult<Unit> {
+    suspend fun reportBlock(email: String, entry: Entry): SealedResult<Unit> {
         val requestBodyJson = """
             {
               "email": "$email",
-              "countryCode": "${subject.countryCode.id}",
-              "missionCode": "${subject.missionCode.id}"
+              "countryCode": "${entry.countryCode.id}",
+              "missionCode": "${entry.missionCode.id}"
             }
             """.trimIndent()
 
@@ -114,11 +114,8 @@ class SubjectApi {
         }
     }
 
-    fun getSubject(): Subject {
-        val subject = Subject(
-//            username = "papog38807@mekuron.com",
-            username = "caweb66200@m3player.com",
-            password = "CczEk4u6n!7Z9i$",
+    fun getEntry(): Entry {
+        val entry = Entry(
             countryCode = CountryCode.PAK,
             missionCode = MissionCode.UKR,
             vacCode = VisaApplicationCenterCode.LHE,
@@ -139,7 +136,7 @@ class SubjectApi {
             )
         )
 
-        return subject
+        return entry
     }
 }
 
