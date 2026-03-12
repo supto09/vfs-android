@@ -101,3 +101,9 @@ app/src/main/java/com/example/vfsgm/
 ## Commit Messages
 
 - Always use conventional commit messages for git commits.
+
+## API Docs Access
+
+- VFS host API docs endpoint: `https://vfsapi.ashulo.org/api-doc-json`
+- Basic auth username: `docs`
+- Basic auth password: `docs`

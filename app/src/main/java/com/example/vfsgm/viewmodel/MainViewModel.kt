@@ -29,6 +29,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 class MainViewModel(application: Application) : BaseViewModel(application) {
     init {
@@ -43,8 +45,27 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         }
 
         viewModelScope.launch {
-            // load entry data
-            entryRepository.loadEntry()
+            // Load/reload entry whenever entryIndex changes.
+            appConfigState
+                .map { it.entryIndex }
+                .distinctUntilChanged()
+                .collect { entryIndex ->
+                    try {
+                        entryRepository.loadEntry(entryIndex = entryIndex)
+                        val loadedEntry = entryState.value
+                        println("Loaded entry for entryIndex=$entryIndex: $loadedEntry")
+                        FirebaseLogService.log(
+                            appConfigState.value.deviceIndex,
+                            "Loaded entry for entryIndex=$entryIndex: $loadedEntry"
+                        )
+                    } catch (e: Exception) {
+                        println("Failed to load entry for entryIndex=$entryIndex: ${e.message}")
+                        FirebaseLogService.log(
+                            appConfigState.value.deviceIndex,
+                            "Failed to load entry for entryIndex=$entryIndex: ${e.message}"
+                        )
+                    }
+                }
         }
     }
 

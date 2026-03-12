@@ -1,13 +1,6 @@
 package com.example.vfsgm.data.api
 
 import com.example.vfsgm.core.SealedResult
-import com.example.vfsgm.data.constants.CountryCode
-import com.example.vfsgm.data.constants.Gender
-import com.example.vfsgm.data.constants.MissionCode
-import com.example.vfsgm.data.constants.Nationality
-import com.example.vfsgm.data.constants.VisaApplicationCenterCode
-import com.example.vfsgm.data.constants.VisaCategoryCode
-import com.example.vfsgm.data.dto.Applicant
 import com.example.vfsgm.data.dto.Entry
 import com.example.vfsgm.data.dto.LeasedAccount
 import com.example.vfsgm.data.network.await
@@ -15,8 +8,6 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import kotlinx.coroutines.delay
-import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -112,31 +103,6 @@ class LeasedAccountApi {
 
             SealedResult.Error(error)
         }
-    }
-
-    fun getEntry(): Entry {
-        val entry = Entry(
-            countryCode = CountryCode.PAK,
-            missionCode = MissionCode.UKR,
-            vacCode = VisaApplicationCenterCode.LHE,
-            visaCategoryCode = VisaCategoryCode.IP,
-            applicants = listOf(
-                Applicant(
-                    firstName = "XI",
-                    lastName = "WION",
-                    gender = Gender.FEMALE,
-                    dateOfBirth = "01/12/2000",
-                    dialCode = "254",
-                    contactNumber = "12324564223",
-                    passportNumber = "A43573334",
-                    passportExpiryDate = "17/12/2027",
-                    emailId = "caweb66200@m3player.com",
-                    nationalityCode = Nationality.PAKISTAN
-                )
-            )
-        )
-
-        return entry
     }
 }
 

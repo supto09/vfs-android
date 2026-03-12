@@ -47,7 +47,7 @@ fun MyOutLinedButton(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(8.dp),
         border = BorderStroke(
             width = 1.dp,
             color = variant.borderColor(colors)

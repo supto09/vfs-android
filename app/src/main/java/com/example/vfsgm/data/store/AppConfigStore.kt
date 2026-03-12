@@ -11,6 +11,7 @@ val Context.appConfigDataStore by preferencesDataStore(name = "app_config")
 
 object AppConfigKeys {
     val DEVICE_INDEX = intPreferencesKey("device_index")
+    val ENTRY_INDEX = intPreferencesKey("entry_index")
 }
 
 class AppConfigStore(private val context: Context) {
@@ -18,12 +19,14 @@ class AppConfigStore(private val context: Context) {
         .map { prefs ->
             AppConfig(
                 deviceIndex = prefs[AppConfigKeys.DEVICE_INDEX] ?: 1,
+                entryIndex = prefs[AppConfigKeys.ENTRY_INDEX] ?: 1,
             )
         }
 
     suspend fun updateAppConfig(appConfig: AppConfig) {
         context.appConfigDataStore.edit { prefs ->
             prefs[AppConfigKeys.DEVICE_INDEX] = appConfig.deviceIndex
+            prefs[AppConfigKeys.ENTRY_INDEX] = appConfig.entryIndex
         }
     }
 }

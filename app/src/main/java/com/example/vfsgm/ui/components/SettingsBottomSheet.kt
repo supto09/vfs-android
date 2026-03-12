@@ -20,6 +20,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -31,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.vfsgm.data.dto.AppConfig
@@ -56,11 +58,14 @@ fun SettingsBottomSheet(
     )
 
     var deviceIndex by remember { mutableIntStateOf(appConfig.deviceIndex) }
+    var entryIndex by remember { mutableIntStateOf(appConfig.entryIndex) }
 
     Box {
         IconButton(
             onClick = {
                 spinCount += 1
+                deviceIndex = appConfig.deviceIndex
+                entryIndex = appConfig.entryIndex
                 showSheet = true
             }
         ) {
@@ -92,13 +97,44 @@ fun SettingsBottomSheet(
                         style = MaterialTheme.typography.titleLarge
                     )
 
-                    OutlinedTextField(
-                        value = if (deviceIndex == 0) "" else deviceIndex.toString(),
-                        onValueChange = { deviceIndex = it.toIntOrNull() ?: 0 },
-                        label = { Text("Device Index") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = if (deviceIndex == 0) "" else deviceIndex.toString(),
+                            onValueChange = { deviceIndex = it.toIntOrNull() ?: 0 },
+                            label = { Text("Device Index") },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFFE85D75),
+                                focusedLabelColor = Color(0xFFE85D75),
+                                cursorColor = Color(0xFFE85D75)
+                            ),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Next
+                            ),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        OutlinedTextField(
+                            value = if (entryIndex == 0) "" else entryIndex.toString(),
+                            onValueChange = { entryIndex = it.toIntOrNull() ?: 0 },
+                            label = { Text("Entry Index") },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFFE85D75),
+                                focusedLabelColor = Color(0xFFE85D75),
+                                cursorColor = Color(0xFFE85D75)
+                            ),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done
+                            ),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -118,15 +154,16 @@ fun SettingsBottomSheet(
                             modifier = Modifier.weight(1f),
                             onClick = {
                                 showSheet = false
-                                println("Applying device index: $deviceIndex")
+                                println("Applying device index: $deviceIndex, entry index: $entryIndex")
                                 onAppConfigChangeRequested(
                                     AppConfig(
-                                        deviceIndex = deviceIndex
+                                        deviceIndex = deviceIndex,
+                                        entryIndex = entryIndex
                                     )
                                 )
                             },
                         ) {
-                            Text("Done")
+                            Text("Apply")
                         }
                     }
 
