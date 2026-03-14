@@ -1,8 +1,8 @@
 package com.example.vfsgm.data.api
 
-import com.example.vfsgm.data.network.NewOkHttpClient
+import com.example.vfsgm.data.network.VfsApiClient
 import com.example.vfsgm.core.ClientSourceManager
-import com.example.vfsgm.core.FirebaseLogService
+import com.example.vfsgm.core.logging.AppLogService
 import com.example.vfsgm.core.SealedResult
 import com.example.vfsgm.data.dto.AppConfig
 import com.example.vfsgm.data.dto.Entry
@@ -19,7 +19,7 @@ import java.io.IOException
 
 class SlotApi {
     private val client by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        NewOkHttpClient().client
+        VfsApiClient().client
     }
 
     private val moshi by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -49,7 +49,7 @@ class SlotApi {
             }
             """.trimIndent()
 
-        FirebaseLogService.log(
+        AppLogService.log(
             appConfig.deviceIndex,
             "LoadApplicants: $requestBodyJson"
         )

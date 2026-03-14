@@ -1,22 +1,25 @@
 package com.example.vfsgm.data.api
 
 import com.example.vfsgm.core.SealedResult
+import com.example.vfsgm.core.logging.AppLogService
+import com.example.vfsgm.core.logging.DeviceIndexContext
+import com.example.vfsgm.core.logging.LogType
 import com.example.vfsgm.data.dto.Entry
 import com.example.vfsgm.data.dto.LeasedAccount
+import com.example.vfsgm.data.network.MyApiClient
 import com.example.vfsgm.data.network.await
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 
 class LeasedAccountApi {
     private val client by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        OkHttpClient.Builder().build()
+        MyApiClient().client
     }
     private val moshi by lazy(LazyThreadSafetyMode.PUBLICATION) {
         Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
@@ -34,7 +37,16 @@ class LeasedAccountApi {
             }
             """.trimIndent()
 
-        println(requestBodyJson)
+        AppLogService.log(
+            deviceIndex = DeviceIndexContext.get(),
+            message = "Lease account request started",
+            logType = LogType.INFO,
+            tag = "LeasedAccountApi",
+            metadata = mapOf(
+                "countryCode" to entry.countryCode.id,
+                "missionCode" to entry.missionCode.id
+            )
+        )
 
         val mediaType = "application/json".toMediaType()
         val requestBody = requestBodyJson.toRequestBody(mediaType)
@@ -49,7 +61,13 @@ class LeasedAccountApi {
             val call = client.newCall(request)
             call.await().use { res ->
                 val bodyStr = res.body?.string().orEmpty()
-                println("Lease Account Response: $bodyStr")
+                AppLogService.log(
+                    deviceIndex = DeviceIndexContext.get(),
+                    message = "Lease account response received",
+                    logType = if (res.isSuccessful) LogType.SUCCESS else LogType.WARNING,
+                    tag = "LeasedAccountApi",
+                    metadata = mapOf("statusCode" to res.code.toString())
+                )
 
                 if (!res.isSuccessful) throw IOException("HTTP ${res.code}: $bodyStr")
 
@@ -65,6 +83,14 @@ class LeasedAccountApi {
             }
         } catch (error: Exception) {
             error.printStackTrace()
+            AppLogService.log(
+                deviceIndex = DeviceIndexContext.get(),
+                message = "Lease account request failed",
+                logType = LogType.ERROR,
+                tag = "LeasedAccountApi",
+                metadata = mapOf("error" to (error.message ?: "unknown")),
+                critical = true
+            )
 
             SealedResult.Error(error)
         }
@@ -79,7 +105,17 @@ class LeasedAccountApi {
             }
             """.trimIndent()
 
-        println(requestBodyJson)
+        AppLogService.log(
+            deviceIndex = DeviceIndexContext.get(),
+            message = "Report blocked request started",
+            logType = LogType.INFO,
+            tag = "LeasedAccountApi",
+            metadata = mapOf(
+                "email" to email,
+                "countryCode" to entry.countryCode.id,
+                "missionCode" to entry.missionCode.id
+            )
+        )
 
         val mediaType = "application/json".toMediaType()
         val requestBody = requestBodyJson.toRequestBody(mediaType)
@@ -93,13 +129,26 @@ class LeasedAccountApi {
         return try {
             val call = client.newCall(request)
             call.await().use { res ->
-                val bodyStr = res.body?.string().orEmpty()
-                println("Report Block Response: $bodyStr")
+                res.body?.string().orEmpty()
+                AppLogService.log(
+                    deviceIndex = DeviceIndexContext.get(),
+                    message = "Report blocked response received",
+                    logType = if (res.isSuccessful) LogType.SUCCESS else LogType.WARNING,
+                    tag = "LeasedAccountApi",
+                    metadata = mapOf("statusCode" to res.code.toString())
+                )
 
                 SealedResult.Success(Unit)
             }
         } catch (error: Exception) {
             error.printStackTrace()
+            AppLogService.log(
+                deviceIndex = DeviceIndexContext.get(),
+                message = "Report blocked request failed",
+                logType = LogType.ERROR,
+                tag = "LeasedAccountApi",
+                metadata = mapOf("error" to (error.message ?: "unknown"))
+            )
 
             SealedResult.Error(error)
         }

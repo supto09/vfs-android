@@ -1,9 +1,10 @@
 package com.example.vfsgm.data.api
 
-import com.example.vfsgm.data.network.NewOkHttpClient
+import com.example.vfsgm.data.network.VfsApiClient
 import com.example.vfsgm.core.ClientSourceManager
 import com.example.vfsgm.core.EncryptionManager
-import com.example.vfsgm.core.FirebaseLogService
+import com.example.vfsgm.core.logging.AppLogService
+import com.example.vfsgm.core.logging.LogType
 import com.example.vfsgm.data.dto.AppConfig
 import com.example.vfsgm.data.network.await
 import com.squareup.moshi.Json
@@ -18,7 +19,7 @@ import kotlin.getValue
 class AuthApi {
 
     private val client by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        NewOkHttpClient().client
+        VfsApiClient().client
     }
     private val moshi by lazy(LazyThreadSafetyMode.PUBLICATION) {
         Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
@@ -33,11 +34,16 @@ class AuthApi {
     ): String? {
         val encryptedPassword = EncryptionManager.encryptWithRsaOaepSha256(password)
 
-        println("Username: $username | Password: $password")
-
-        FirebaseLogService.log(
+        AppLogService.log(
             appConfig.deviceIndex,
-            "Login api called -> username: $username password: $password missioncode: ukr countrycode: pak"
+            "Login api called",
+            LogType.INFO,
+            tag = "AuthApi",
+            metadata = mapOf(
+                "username" to username,
+                "missionCode" to "ukr",
+                "countryCode" to "pak"
+            )
         )
 
 
@@ -68,10 +74,12 @@ class AuthApi {
             val call = client.newCall(request)
             call.await().use { res ->
                 val bodyStr = res.body?.string().orEmpty()
-                println("Login response: $bodyStr")
-                FirebaseLogService.log(
+                AppLogService.log(
                     appConfig.deviceIndex,
-                    "Login Code:${res.code} response:  $bodyStr"
+                    "Login response received",
+                    if (res.isSuccessful) LogType.SUCCESS else LogType.WARNING,
+                    tag = "AuthApi",
+                    metadata = mapOf("statusCode" to res.code.toString())
                 )
 
                 if (!res.isSuccessful) throw IOException("HTTP ${res.code}: $bodyStr")
@@ -83,9 +91,13 @@ class AuthApi {
             }
         } catch (error: Exception) {
             error.printStackTrace()
-            FirebaseLogService.log(
+            AppLogService.log(
                 appConfig.deviceIndex,
-                "Failed to parse LoginResponse. ${error.message}"
+                "Login request failed",
+                LogType.ERROR,
+                tag = "AuthApi",
+                metadata = mapOf("error" to (error.message ?: "unknown")),
+                critical = true
             )
         }
         return null

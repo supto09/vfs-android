@@ -32,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.example.vfsgm.core.logging.AppLogService
+import com.example.vfsgm.core.logging.LogType
 import com.example.vfsgm.data.network.AgentHolder
 import com.example.vfsgm.data.network.CookieJarHolder
 import okhttp3.Cookie
@@ -43,6 +45,7 @@ const val interventionDelayMs = 50_000L
 
 @Composable
 fun CloudflareBypassWebview(
+    deviceIndex: Int,
     restartCount: Int,
     onCompleted: () -> Unit,
     onTimeout: () -> Unit,
@@ -51,6 +54,13 @@ fun CloudflareBypassWebview(
     val context = LocalContext.current
     val urlToBypass = "https://visa.vfsglobal.com/pak/en/ukr/login"
 //    val urlToBypass = "https://sergiodemo.com/security/challenge/legacy-challenge"
+    AppLogService.log(
+        deviceIndex,
+        "CloudflareBypassWebview composed",
+        LogType.DEBUG,
+        tag = "CloudflareWebView",
+        metadata = mapOf("restartCount" to restartCount.toString(), "url" to urlToBypass)
+    )
 
     var webViewRef: WebView? = null
     val stopTimersRef = remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -89,6 +99,12 @@ fun CloudflareBypassWebview(
                 val userAgent = webView.settings.userAgentString
                 AgentHolder.agent = userAgent
                 println("User Agent: $userAgent")
+                AppLogService.log(
+                    deviceIndex,
+                    "WebView initialized with user agent",
+                    LogType.DEBUG,
+                    tag = "CloudflareWebView"
+                )
 
 
                 val mainHandler = Handler(Looper.getMainLooper())
@@ -103,6 +119,7 @@ fun CloudflareBypassWebview(
                     mainHandler.removeCallbacksAndMessages(null)
                     timeoutHandler.removeCallbacksAndMessages(null)
                     interventionHandler.removeCallbacksAndMessages(null)
+                    AppLogService.log(deviceIndex, "Cloudflare webview timers stopped", LogType.DEBUG, tag = "CloudflareWebView")
                 }
 
                 stopTimersRef.value = { stopAllTimers() }
@@ -142,7 +159,7 @@ fun CloudflareBypassWebview(
 //                    println("🍪 Cookie snapshot for $urlToBypass -> $all")
 
                     // Sync cookies from WebView -> OkHttp cookie jar (your existing logic)
-                    syncCookiesFromWebViewToOkHttp(context, urlToBypass)
+                    syncCookiesFromWebViewToOkHttp(context, urlToBypass, deviceIndex)
 
                     // Persist WebView cookie store ASAP
                     cookieManager.flush()
@@ -159,14 +176,28 @@ fun CloudflareBypassWebview(
                 fun onClearanceTimeoutDummy() {
                     // Dummy function for now (future: notification)
                     println("⏰ Dummy timeout fired: cf_clearance NOT found within ${timeoutMs}ms")
+                    AppLogService.log(
+                        deviceIndex,
+                        "cf_clearance timeout fired",
+                        LogType.WARNING,
+                        tag = "CloudflareWebView",
+                        metadata = mapOf("timeoutMs" to timeoutMs.toString(), "restartCount" to restartCount.toString())
+                    )
 
                     if(restartCount >= 2){
                         // code for self repairing
-                        clickWebview(webViewRef)
+                        clickWebview(webViewRef, deviceIndex)
 
                         interventionHandler.postDelayed({
                             println("⚠️ Self-repair failed → awaiting manual intervention")
                             if (!clearanceFound && !hasClearanceCookie()) {
+                                AppLogService.log(
+                                    deviceIndex,
+                                    "Self-repair failed, requesting manual intervention",
+                                    LogType.ERROR,
+                                    tag = "CloudflareWebView",
+                                    critical = true
+                                )
                                 onRequestManualIntervention()
                             }
                         }, interventionDelayMs)
@@ -175,12 +206,13 @@ fun CloudflareBypassWebview(
                     }
                 }
 
-                 timeoutRunnable = Runnable {
+                timeoutRunnable = Runnable {
                     // Only fire if still not found
                     if (!clearanceFound && !hasClearanceCookie()) {
                         onClearanceTimeoutDummy()
                     }
                 }
+                AppLogService.log(deviceIndex, "Cloudflare timeout watchdog scheduled", LogType.DEBUG, tag = "CloudflareWebView")
 
                 // Start countdown immediately when WebView is created/opened
                 timeoutHandler.postDelayed(timeoutRunnable, timeoutMs)
@@ -209,10 +241,12 @@ fun CloudflareBypassWebview(
                 // Start/stop polling safely to avoid leaks
                 webView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
                     override fun onViewAttachedToWindow(v: View) {
+                        AppLogService.log(deviceIndex, "Cloudflare webview attached", LogType.DEBUG, tag = "CloudflareWebView")
                         mainHandler.postDelayed(pollRunnable, 1000L)
                     }
 
                     override fun onViewDetachedFromWindow(v: View) {
+                        AppLogService.log(deviceIndex, "Cloudflare webview detached", LogType.WARNING, tag = "CloudflareWebView")
                         stopAllTimers()
                     }
                 })
@@ -226,6 +260,13 @@ fun CloudflareBypassWebview(
                         super.onPageStarted(view, url, favicon)
 
                         println("onPageStarted URL: $url")
+                        AppLogService.log(
+                            deviceIndex,
+                            "Cloudflare page started",
+                            LogType.DEBUG,
+                            tag = "CloudflareWebView",
+                            metadata = mapOf("url" to (url ?: "null"))
+                        )
 
                         logAndSyncIfChanged()
                     }
@@ -240,6 +281,7 @@ fun CloudflareBypassWebview(
                             clearanceFound = true
                             onCompleted()
                             println("✅ cf_clearance detected onPageFinished (timeout cancelled)")
+                            AppLogService.log(deviceIndex, "cf_clearance detected on page finished", LogType.SUCCESS, tag = "CloudflareWebView")
                         }
                     }
 
@@ -254,6 +296,7 @@ fun CloudflareBypassWebview(
                             clearanceFound = true
                             onCompleted()
                             println("✅ cf_clearance detected onLoadResource (timeout cancelled)")
+                            AppLogService.log(deviceIndex, "cf_clearance detected while loading resource", LogType.SUCCESS, tag = "CloudflareWebView")
                         }
                     }
 
@@ -277,6 +320,7 @@ fun CloudflareBypassWebview(
                             clearanceFound = true
                             onCompleted()
                             println("✅ cf_clearance detected in shouldInterceptRequest (timeout cancelled)")
+                            AppLogService.log(deviceIndex, "cf_clearance detected in request intercept", LogType.SUCCESS, tag = "CloudflareWebView")
                         }
 
                         return super.shouldInterceptRequest(view, request)
@@ -289,6 +333,13 @@ fun CloudflareBypassWebview(
                 webView.setOnTouchListener { _, e ->
                     if (e.action == MotionEvent.ACTION_DOWN) {
                         println("Last Tap: ${e.x} / ${e.y}")
+                        AppLogService.log(
+                            deviceIndex,
+                            "Cloudflare webview touched",
+                            LogType.DEBUG,
+                            tag = "CloudflareWebView",
+                            metadata = mapOf("x" to e.x.toString(), "y" to e.y.toString())
+                        )
                     }
                     false
                 }
@@ -297,11 +348,13 @@ fun CloudflareBypassWebview(
                 // 8) LOAD URL (after clean state + watchers set)
                 // ==========================================
                 webView.loadUrl(urlToBypass)
+                AppLogService.log(deviceIndex, "Cloudflare webview URL load started", LogType.INFO, tag = "CloudflareWebView")
 
                 webView
             },
             onRelease = { view ->
                 // Stop & destroy the WebView when Compose disposes it
+                AppLogService.log(deviceIndex, "Cloudflare webview released", LogType.WARNING, tag = "CloudflareWebView")
                 view.stopLoading()
                 view.destroy()
                 stopTimersRef.value?.invoke()
@@ -310,7 +363,7 @@ fun CloudflareBypassWebview(
     }
 }
 
-fun syncCookiesFromWebViewToOkHttp(context: Context, webUrl: String) {
+fun syncCookiesFromWebViewToOkHttp(context: Context, webUrl: String, deviceIndex: Int) {
     println("❌ Running cookie sync")
 
     val uri = Uri.parse(webUrl)
@@ -349,12 +402,21 @@ fun syncCookiesFromWebViewToOkHttp(context: Context, webUrl: String) {
 
     if (targetCookies.isNotEmpty()) {
         CookieJarHolder.cookieJar.addCookiesManually("lift-api.vfsglobal.com", targetCookies)
+        AppLogService.log(
+            deviceIndex,
+            "Synced cf_clearance cookie(s) from WebView to OkHttp",
+            LogType.SUCCESS,
+            tag = "CloudflareWebView",
+            metadata = mapOf("cookieCount" to targetCookies.size.toString(), "domain" to domain)
+        )
     } else {
         println("❌ No cf_clearance cookie found to sync")
+        AppLogService.log(deviceIndex, "No cf_clearance cookie found during sync", LogType.DEBUG, tag = "CloudflareWebView")
     }
 }
 
-fun clickWebview(webViewRef: WebView?) {
+fun clickWebview(webViewRef: WebView?, deviceIndex: Int) {
+    AppLogService.log(deviceIndex, "Triggering synthetic click for Cloudflare self-repair", LogType.WARNING, tag = "CloudflareWebView")
     val now = SystemClock.uptimeMillis()
     val x = 450F
     val y = 605F

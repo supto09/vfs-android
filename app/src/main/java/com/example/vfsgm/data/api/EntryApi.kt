@@ -8,19 +8,19 @@ import com.example.vfsgm.data.constants.VisaApplicationCenterCode
 import com.example.vfsgm.data.constants.VisaCategoryCode
 import com.example.vfsgm.data.dto.Applicant
 import com.example.vfsgm.data.dto.Entry
+import com.example.vfsgm.data.network.MyApiClient
 import com.example.vfsgm.data.network.await
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
 import java.util.Locale
 
 class EntryApi {
     private val client by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        OkHttpClient.Builder().build()
+        MyApiClient().client
     }
     private val moshi by lazy(LazyThreadSafetyMode.PUBLICATION) {
         Moshi.Builder().add(KotlinJsonAdapterFactory()).build()

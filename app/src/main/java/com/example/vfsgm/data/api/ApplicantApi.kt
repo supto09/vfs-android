@@ -1,8 +1,8 @@
 package com.example.vfsgm.data.api
 
-import com.example.vfsgm.data.network.NewOkHttpClient
+import com.example.vfsgm.data.network.VfsApiClient
 import com.example.vfsgm.core.ClientSourceManager
-import com.example.vfsgm.core.FirebaseLogService
+import com.example.vfsgm.core.logging.AppLogService
 import com.example.vfsgm.data.dto.AppConfig
 import com.example.vfsgm.data.dto.Entry
 import com.example.vfsgm.data.dto.SessionData
@@ -23,7 +23,7 @@ import java.io.IOException
 class ApplicantApi {
 
     private val client by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        NewOkHttpClient().client
+        VfsApiClient().client
     }
 
     private val moshi by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -45,7 +45,7 @@ class ApplicantApi {
             }
             """.trimIndent()
 
-        FirebaseLogService.log(
+        AppLogService.log(
             appConfig.deviceIndex,
             "LoadApplicants: $requestBodyJson"
         )
@@ -77,7 +77,7 @@ class ApplicantApi {
                     println("Status: ${it.code}")
                     println(it.body?.string())
 
-                    FirebaseLogService.log(
+                    AppLogService.log(
                         appConfig.deviceIndex,
                         "LoadApplicants: Status: ${it.code} Body: ${it.body}"
                     )
@@ -189,7 +189,7 @@ class ApplicantApi {
                 .replace("\r", "")
         )
 
-        FirebaseLogService.log(
+        AppLogService.log(
             appConfig.deviceIndex,
             "AddApplicants: requestBodyJson: ${
                 requestBodyJson.replace("\n", "")
@@ -219,7 +219,7 @@ class ApplicantApi {
         call.await().use { res ->
             val bodyStr = res.body?.string().orEmpty()
             println("Add Applicant Code: ${res.code}: Response: $bodyStr")
-            FirebaseLogService.log(
+            AppLogService.log(
                 appConfig.deviceIndex,
                 "Add Applicant Response: $bodyStr"
             )

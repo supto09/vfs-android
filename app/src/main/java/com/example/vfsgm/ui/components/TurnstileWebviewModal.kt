@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.example.vfsgm.core.logging.AppLogService
+import com.example.vfsgm.core.logging.LogType
 import com.example.vfsgm.data.constants.SITE_KEY
 import com.example.vfsgm.data.store.TurnstileStore
 import com.example.vfsgm.ui.components.atomics.MySolidButton
@@ -20,19 +22,25 @@ import kotlin.let
 
 
 @Composable
-fun TurnstileWebviewModal() {
+fun TurnstileWebviewModal(deviceIndex: Int) {
     val showDialog = remember { mutableStateOf(false) }
 
     Box {
         MySolidButton(
-            onClick = { showDialog.value = true },
+            onClick = {
+                AppLogService.log(deviceIndex, "Turnstile modal opened", LogType.INFO, tag = "TurnstileModal")
+                showDialog.value = true
+            },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("TT")
         }
 
         if (showDialog.value) {
-            Dialog(onDismissRequest = { showDialog.value = false }) {
+            Dialog(onDismissRequest = {
+                AppLogService.log(deviceIndex, "Turnstile modal dismissed", LogType.WARNING, tag = "TurnstileModal")
+                showDialog.value = false
+            }) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = Color.White,
@@ -41,17 +49,20 @@ fun TurnstileWebviewModal() {
                         .fillMaxHeight(0.7f)
                 ) {
                     TurnstileTokenWebview(
+                        deviceIndex = deviceIndex,
                         siteKey = SITE_KEY,
                         onToken = { token ->
                             println("Turnstile Token: $token")
                             token?.let { it: String ->
                                 TurnstileStore.setToken(token = it)
                                 println(it)
+                                AppLogService.log(deviceIndex, "Turnstile token received and stored", LogType.SUCCESS, tag = "TurnstileModal")
                                 showDialog.value = false
                             }
                         },
                         onClose = {
                             println("On Complete received")
+                            AppLogService.log(deviceIndex, "Turnstile modal close tapped", LogType.INFO, tag = "TurnstileModal")
                             // Optional callback once cf_clearance is acquired
                             showDialog.value = false
                         }

@@ -20,28 +20,43 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlin.apply
+import com.example.vfsgm.core.logging.AppLogService
+import com.example.vfsgm.core.logging.LogType
 import kotlin.text.trimIndent
 
 
 
 class TurnstileBridge(
+    private val deviceIndex: Int,
     private val tokenCallback: (String?) -> Unit
 ) {
     @JavascriptInterface
     fun onToken(token: String?) {
+        AppLogService.log(
+            deviceIndex,
+            "Turnstile JS token callback",
+            if (token.isNullOrBlank()) LogType.WARNING else LogType.SUCCESS,
+            tag = "TurnstileWebView"
+        )
         tokenCallback(token)
     }
 
     // Optional helpers if you call them from JS too:
     @JavascriptInterface
     fun onExpired() {
+        AppLogService.log(deviceIndex, "Turnstile token expired", LogType.WARNING, tag = "TurnstileWebView")
         tokenCallback(null)
     }
 
     @JavascriptInterface
     fun onError(msg: String?) {
-        // log or handle if you want
+        AppLogService.log(
+            deviceIndex,
+            "Turnstile JS error callback",
+            LogType.ERROR,
+            tag = "TurnstileWebView",
+            metadata = mapOf("error" to (msg ?: "unknown"))
+        )
     }
 }
 
@@ -50,6 +65,7 @@ private const val BASE_ORIGIN = "https://visa.vfsglobal.com/pak/en/ukr/login"
 
 @Composable
 fun TurnstileTokenWebview(
+    deviceIndex: Int,
     siteKey: String,
     onToken: (String?) -> Unit,
     onClose: () -> Unit = {}
@@ -67,12 +83,14 @@ fun TurnstileTokenWebview(
 
         AndroidView(
             factory = { ctx: Context ->
-                buildTurnstileOnlyWebView(ctx) { token ->
+                AppLogService.log(deviceIndex, "Creating Turnstile WebView", LogType.DEBUG, tag = "TurnstileWebView")
+                buildTurnstileOnlyWebView(ctx, deviceIndex) { token ->
                     onToken(token)
                 }
             },
             update = { webView ->
-                loadTurnstileLocalHtml(webView, baseOrigin = BASE_ORIGIN, siteKey = siteKey)
+                AppLogService.log(deviceIndex, "Loading Turnstile HTML into WebView", LogType.DEBUG, tag = "TurnstileWebView")
+                loadTurnstileLocalHtml(webView, baseOrigin = BASE_ORIGIN, siteKey = siteKey, deviceIndex = deviceIndex)
             }
         )
     }
@@ -81,12 +99,12 @@ fun TurnstileTokenWebview(
 @SuppressLint("SetJavaScriptEnabled")
 private fun buildTurnstileOnlyWebView(
     context: Context,
+    deviceIndex: Int,
     onJsToken: (String?) -> Unit
 ): WebView = WebView(context).apply {
     WebView.setWebContentsDebuggingEnabled(true)
     settings.javaScriptEnabled = true
     settings.domStorageEnabled = true
-    settings.databaseEnabled = true
     settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
 
     // Allow cookies (Turnstile loads from CF domains)
@@ -95,14 +113,30 @@ private fun buildTurnstileOnlyWebView(
 
     // We’re not loading the site; block navigations just in case
     webViewClient = object : WebViewClient() {
-        override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean = true
+        override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+            AppLogService.log(
+                deviceIndex,
+                "Blocked Turnstile navigation",
+                LogType.DEBUG,
+                tag = "TurnstileWebView",
+                metadata = mapOf("url" to (request?.url?.toString() ?: "null"))
+            )
+            return true
+        }
     }
 
-    addJavascriptInterface(TurnstileBridge(onJsToken), "AndroidTurnstile")
+    addJavascriptInterface(TurnstileBridge(deviceIndex, onJsToken), "AndroidTurnstile")
 }
 
 /** Loads a minimal HTML that renders Turnstile; baseUrl sets the document origin to your host */
-private fun loadTurnstileLocalHtml(webView: WebView, baseOrigin: String, siteKey: String) {
+private fun loadTurnstileLocalHtml(webView: WebView, baseOrigin: String, siteKey: String, deviceIndex: Int) {
+    AppLogService.log(
+        deviceIndex,
+        "Preparing Turnstile local HTML",
+        LogType.DEBUG,
+        tag = "TurnstileWebView",
+        metadata = mapOf("baseOrigin" to baseOrigin)
+    )
     val html = """
         <!doctype html>
         <meta name="viewport" content="width=device-width, initial-scale=1">

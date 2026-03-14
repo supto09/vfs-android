@@ -26,8 +26,8 @@ fun SystemControlPanel(
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(modifier = Modifier.weight(1f)) { CloudflareModalWrapper() }
-            Box(modifier = Modifier.weight(1f)) { TurnstileWebviewModal() }
+            Box(modifier = Modifier.weight(1f)) { CloudflareModalWrapper(deviceIndex = appConfig.deviceIndex) }
+            Box(modifier = Modifier.weight(1f)) { TurnstileWebviewModal(deviceIndex = appConfig.deviceIndex) }
             Box {
                 SettingsBottomSheet(
                     appConfig = appConfig,

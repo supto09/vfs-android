@@ -18,11 +18,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.example.vfsgm.core.logging.AppLogService
+import com.example.vfsgm.core.logging.LogType
 import com.example.vfsgm.ui.components.atomics.MySolidButton
 import kotlinx.coroutines.delay
 
 @Composable
-fun CloudflareModalWrapper() {
+fun CloudflareModalWrapper(deviceIndex: Int) {
     val showDialog = remember { mutableStateOf(false) }
     val restartCount = remember { mutableIntStateOf(0) }
 
@@ -31,6 +33,7 @@ fun CloudflareModalWrapper() {
 
     // 1) Auto-open once when this screen first appears
     LaunchedEffect(Unit) {
+        AppLogService.log(deviceIndex, "Cloudflare modal initial auto-open", LogType.DEBUG, tag = "CloudflareModal")
         showDialog.value = true
     }
 
@@ -39,6 +42,13 @@ fun CloudflareModalWrapper() {
         while (true) {
             delay(reopenIntervalMs)
             if (!showDialog.value) {
+                AppLogService.log(
+                    deviceIndex,
+                    "Cloudflare modal periodic reopen triggered",
+                    LogType.INFO,
+                    tag = "CloudflareModal",
+                    metadata = mapOf("intervalMs" to reopenIntervalMs.toString())
+                )
                 restartCount.intValue = 0
                 showDialog.value = true
             }
@@ -48,6 +58,7 @@ fun CloudflareModalWrapper() {
     Box {
         MySolidButton(
             onClick = {
+                AppLogService.log(deviceIndex, "Cloudflare modal opened manually", LogType.INFO, tag = "CloudflareModal")
                 showDialog.value = true
             },
             modifier = Modifier.fillMaxWidth()
@@ -56,7 +67,10 @@ fun CloudflareModalWrapper() {
         }
 
         if (showDialog.value) {
-            Dialog(onDismissRequest = { showDialog.value = false }) {
+            Dialog(onDismissRequest = {
+                AppLogService.log(deviceIndex, "Cloudflare dialog dismissed", LogType.WARNING, tag = "CloudflareModal")
+                showDialog.value = false
+            }) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = Color.White,
@@ -66,15 +80,30 @@ fun CloudflareModalWrapper() {
                 ) {
                     key(restartCount.intValue) {
                         CloudflareBypassWebview(
+                            deviceIndex = deviceIndex,
                             restartCount = restartCount.intValue,
                             onCompleted = {
                                 println("On Complete received")
+                                AppLogService.log(
+                                    deviceIndex,
+                                    "Cloudflare bypass completed",
+                                    LogType.SUCCESS,
+                                    tag = "CloudflareModal",
+                                    metadata = mapOf("restartCount" to restartCount.intValue.toString())
+                                )
                                 // Optional callback once cf_clearance is acquired
                                 showDialog.value = false
                                 restartCount.intValue = 0
                             },
                             onTimeout = {
                                 println("⏰ Timeout → restarting WebView")
+                                AppLogService.log(
+                                    deviceIndex,
+                                    "Cloudflare bypass timeout, restarting webview",
+                                    LogType.WARNING,
+                                    tag = "CloudflareModal",
+                                    metadata = mapOf("restartCount" to restartCount.intValue.toString())
+                                )
                                 restartCount.intValue += 1
 
                                 // 1) Close dialog
@@ -87,6 +116,13 @@ fun CloudflareModalWrapper() {
                             },
                             onRequestManualIntervention = {
                                 println("Manual Intervention required")
+                                AppLogService.log(
+                                    deviceIndex,
+                                    "Cloudflare bypass requires manual intervention",
+                                    LogType.ERROR,
+                                    tag = "CloudflareModal",
+                                    critical = true
+                                )
                             }
                         )
                     }
