@@ -64,7 +64,8 @@ fun AppControlPanel(
             MySolidButton(
                 onClick = { onAction(AppControlAction.LoadSlot) },
                 modifier = Modifier.weight(2f),
-                enabled = dataState.loadSlotJobRunning !== JobState.IN_PROGRESS
+                enabled = dataState.loadSlotJobRunning != JobState.IN_PROGRESS &&
+                    dataState.scheduleJobRunning != JobState.IN_PROGRESS
             ) {
                 Text("Load Slot")
             }
@@ -75,6 +76,14 @@ fun AppControlPanel(
             ) {
                 Text("Stop")
             }
+        }
+
+        MySolidButton(
+            onClick = {},
+            modifier = Modifier.fillMaxWidth(),
+            enabled = dataState.scheduleJobRunning != JobState.IN_PROGRESS
+        ) {
+            Text("Schedule")
         }
 
 

@@ -14,5 +14,6 @@ data class DataState(
     val loadApplicantsJobRunning: JobState = JobState.NOT_STARTED,
     val addApplicantJobRunning: JobState = JobState.NOT_STARTED,
     val checkSlotJobRunning: JobState = JobState.NOT_STARTED,
-    val loadSlotJobRunning: JobState = JobState.NOT_STARTED
+    val loadSlotJobRunning: JobState = JobState.NOT_STARTED,
+    val scheduleJobRunning: JobState = JobState.NOT_STARTED
 )

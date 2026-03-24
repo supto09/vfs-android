@@ -145,16 +145,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     login {
                         vmLog("ReLogin callback: login complete, triggering applicant+slot jobs", LogType.SUCCESS)
                         viewModelScope.launch(Dispatchers.IO) {
-                            val addOk = addApplicant()
-                            if (addOk) {
-                                loadTimeSlot()
-                                startCheckIsSlotAvailable()
-                            } else {
-                                vmLog(
-                                    "ReLogin cycle: addApplicant failed after max retries; slot flow skipped",
-                                    LogType.WARNING
-                                )
-                            }
+                            addApplicant(triggerSlotFlowOnSuccess = true)
                         }
                     }
                 } catch (e: Exception) {
@@ -333,7 +324,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    suspend fun addApplicant(): Boolean {
+    suspend fun addApplicant(triggerSlotFlowOnSuccess: Boolean = false): Boolean {
         if (dataState.value.addApplicantJobRunning == JobState.IN_PROGRESS) {
             vmLog("addApplicant ignored because job is already active", LogType.WARNING)
             return false
@@ -379,6 +370,11 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                             LogType.SUCCESS,
                             metadata = mapOf("attempt" to attempt.toString(), "urn" to urn)
                         )
+                        if (triggerSlotFlowOnSuccess) {
+                            vmLog("addApplicant success: starting loadTimeSlot and checkSlot jobs", LogType.DEBUG)
+                            loadTimeSlot()
+                            startCheckIsSlotAvailable()
+                        }
                         return true
                     }
                 } catch (e: Exception) {
@@ -423,6 +419,12 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 "reason" to lastFailureReason
             )
         )
+        if (triggerSlotFlowOnSuccess) {
+            vmLog(
+                "addApplicant failed after max retries; slot flow skipped",
+                LogType.WARNING
+            )
+        }
         return false
     }
 
@@ -658,64 +660,82 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             )
         )
 
-        val randomizedAllocationIds = allocationIds.shuffled()
-        vmLog(
-            "Allocation IDs randomized before scheduling",
-            LogType.DEBUG,
-            metadata = mapOf("allocationCount" to randomizedAllocationIds.size.toString())
-        )
+        dataRepository.updateScheduleJobState(JobState.IN_PROGRESS)
+        vmLog("Schedule job state set to IN_PROGRESS", LogType.DEBUG)
 
-        randomizedAllocationIds.forEachIndexed { index, allocationId ->
-            val attemptNo = index + 1
+        var completed = false
+        try {
+            val randomizedAllocationIds = allocationIds.shuffled()
             vmLog(
-                "Schedule attempt started",
-                LogType.INFO,
-                metadata = mapOf(
-                    "attempt" to attemptNo.toString(),
-                    "totalAttempts" to randomizedAllocationIds.size.toString(),
-                    "allocationId" to allocationId
-                )
+                "Allocation IDs randomized before scheduling",
+                LogType.DEBUG,
+                metadata = mapOf("allocationCount" to randomizedAllocationIds.size.toString())
             )
 
-            when (val scheduleResult = scheduleApi.schedule(
-                sessionData = sessionData,
-                entry = entry,
-                urn = urn,
-                allocationId = allocationId
-            )) {
-                is SealedResult.Success -> {
-                    vmLog(
-                        "Schedule attempt succeeded",
-                        LogType.SUCCESS,
-                        metadata = mapOf(
-                            "attempt" to attemptNo.toString(),
-                            "allocationId" to allocationId,
-                            "statusCode" to scheduleResult.data.statusCode.toString()
-                        )
+            randomizedAllocationIds.forEachIndexed { index, allocationId ->
+                val attemptNo = index + 1
+                vmLog(
+                    "Schedule attempt started",
+                    LogType.INFO,
+                    metadata = mapOf(
+                        "attempt" to attemptNo.toString(),
+                        "totalAttempts" to randomizedAllocationIds.size.toString(),
+                        "allocationId" to allocationId
                     )
-                    return
-                }
+                )
 
-                is SealedResult.Error -> {
-                    vmLog(
-                        "Schedule attempt failed",
-                        LogType.WARNING,
-                        metadata = mapOf(
-                            "attempt" to attemptNo.toString(),
-                            "allocationId" to allocationId,
-                            "error" to (scheduleResult.exception.message ?: "unknown")
+                when (val scheduleResult = scheduleApi.schedule(
+                    sessionData = sessionData,
+                    entry = entry,
+                    urn = urn,
+                    allocationId = allocationId
+                )) {
+                    is SealedResult.Success -> {
+                        completed = true
+                        vmLog(
+                            "Schedule attempt succeeded",
+                            LogType.SUCCESS,
+                            metadata = mapOf(
+                                "attempt" to attemptNo.toString(),
+                                "allocationId" to allocationId,
+                                "statusCode" to scheduleResult.data.statusCode.toString()
+                            )
                         )
-                    )
+                        return
+                    }
+
+                    is SealedResult.Error -> {
+                        vmLog(
+                            "Schedule attempt failed",
+                            LogType.WARNING,
+                            metadata = mapOf(
+                                "attempt" to attemptNo.toString(),
+                                "allocationId" to allocationId,
+                                "error" to (scheduleResult.exception.message ?: "unknown")
+                            )
+                        )
+                    }
                 }
             }
-        }
 
-        vmLog(
-            "All schedule attempts failed",
-            LogType.ERROR,
-            critical = true,
-            metadata = mapOf("attemptedAllocationCount" to randomizedAllocationIds.size.toString())
-        )
+            vmLog(
+                "All schedule attempts failed",
+                LogType.ERROR,
+                critical = true,
+                metadata = mapOf("attemptedAllocationCount" to randomizedAllocationIds.size.toString())
+            )
+        } catch (e: CancellationException) {
+            vmLog("scheduleJob cancelled", LogType.DEBUG)
+            throw e
+        } finally {
+            val finalState = if (completed) JobState.COMPLETE else JobState.STOPPED
+            dataRepository.updateScheduleJobState(finalState)
+            vmLog(
+                "Schedule job state updated",
+                LogType.DEBUG,
+                metadata = mapOf("state" to finalState.name)
+            )
+        }
     }
 
 
