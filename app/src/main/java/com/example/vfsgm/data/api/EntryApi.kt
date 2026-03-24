@@ -50,7 +50,6 @@ class EntryApi {
             throw IOException("Failed to load entry for index=$entryIndex", error)
         }
     }
-    /*
     private fun fallbackStaticEntry(): Entry {
         return Entry(
             countryCode = CountryCode.PAK,
@@ -73,7 +72,6 @@ class EntryApi {
             )
         )
     }
-    */
 }
 
 private fun EntryApiResponse.toEntry(): Entry {

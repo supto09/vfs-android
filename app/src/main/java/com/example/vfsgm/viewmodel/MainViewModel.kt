@@ -27,6 +27,7 @@ import com.example.vfsgm.data.repository.EntryRepository
 import com.example.vfsgm.data.repository.SessionRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -35,6 +36,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 class MainViewModel(application: Application) : BaseViewModel(application) {
+    private companion object {
+        const val ADD_APPLICANT_MAX_ATTEMPTS = 5
+        const val ADD_APPLICANT_RETRY_DELAY_MS = 10_000L
+    }
+
     private fun vmLog(
         message: String,
         type: LogType = LogType.INFO,
@@ -138,11 +144,18 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     vmLog("ReLogin cycle: login start", LogType.DEBUG)
                     login {
                         vmLog("ReLogin callback: login complete, triggering applicant+slot jobs", LogType.SUCCESS)
-                        addApplicant()
-
-                        loadTimeSlot()
-
-                        startCheckIsSlotAvailable()
+                        viewModelScope.launch(Dispatchers.IO) {
+                            val addOk = addApplicant()
+                            if (addOk) {
+                                loadTimeSlot()
+                                startCheckIsSlotAvailable()
+                            } else {
+                                vmLog(
+                                    "ReLogin cycle: addApplicant failed after max retries; slot flow skipped",
+                                    LogType.WARNING
+                                )
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     vmLog(
@@ -279,6 +292,11 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun loadApplicants() {
+        if (dataState.value.loadApplicantsJobRunning == JobState.IN_PROGRESS) {
+            vmLog("loadApplicants ignored because job is already active", LogType.WARNING)
+            return
+        }
+
         val sessionData = sessionState.value ?: run {
             vmLog("loadApplicants skipped: session is null", LogType.WARNING)
             return
@@ -287,28 +305,130 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         vmLog("Loading applicants", LogType.DEBUG)
 
         viewModelScope.launch(Dispatchers.IO) {
-            applicantApi.loadApplicants(
-                sessionData = sessionData, entry = entry, appConfig = appConfigState.value
-            )
-            vmLog("loadApplicants completed", LogType.SUCCESS)
+            dataRepository.updateLoadApplicantsJobState(JobState.IN_PROGRESS)
+            vmLog("Load applicants job state set to IN_PROGRESS", LogType.DEBUG)
+
+            var completed = false
+            try {
+                applicantApi.loadApplicants(
+                    sessionData = sessionData, entry = entry, appConfig = appConfigState.value
+                )
+                completed = true
+                vmLog("loadApplicants completed", LogType.SUCCESS)
+            } catch (e: Exception) {
+                vmLog(
+                    "loadApplicants failed",
+                    LogType.ERROR,
+                    metadata = mapOf("error" to (e.message ?: "unknown"))
+                )
+            } finally {
+                val finalState = if (completed) JobState.COMPLETE else JobState.STOPPED
+                dataRepository.updateLoadApplicantsJobState(finalState)
+                vmLog(
+                    "Load applicants job state updated",
+                    LogType.DEBUG,
+                    metadata = mapOf("state" to finalState.name)
+                )
+            }
         }
     }
 
-    fun addApplicant() {
+    suspend fun addApplicant(): Boolean {
+        if (dataState.value.addApplicantJobRunning == JobState.IN_PROGRESS) {
+            vmLog("addApplicant ignored because job is already active", LogType.WARNING)
+            return false
+        }
+
         val sessionData = sessionState.value ?: run {
             vmLog("addApplicant skipped: session is null", LogType.WARNING)
-            return
+            return false
         }
         val entry = entryState.value
-        vmLog("addApplicant started", LogType.DEBUG)
+        vmLog(
+            "addApplicant started",
+            LogType.DEBUG,
+            metadata = mapOf("maxAttempts" to ADD_APPLICANT_MAX_ATTEMPTS.toString())
+        )
 
-        viewModelScope.launch(Dispatchers.IO) {
-            val urn = applicantApi.addApplicant(
-                sessionData = sessionData, entry = entry, appConfig = appConfigState.value
+        dataRepository.updateAddApplicantJobState(JobState.IN_PROGRESS)
+        vmLog("Add applicant job state set to IN_PROGRESS", LogType.DEBUG)
+
+        var lastFailureReason = "unknown"
+        var completed = false
+        try {
+            repeat(ADD_APPLICANT_MAX_ATTEMPTS) { attemptIndex ->
+                val attempt = attemptIndex + 1
+
+                try {
+                    val urn = applicantApi.addApplicant(
+                        sessionData = sessionData, entry = entry, appConfig = appConfigState.value
+                    )
+
+                    if (urn.isBlank()) {
+                        lastFailureReason = "blank urn"
+                        vmLog(
+                            "addApplicant attempt failed: blank URN",
+                            LogType.WARNING,
+                            metadata = mapOf("attempt" to attempt.toString())
+                        )
+                    } else {
+                        dataRepository.saveUrn(urn = urn)
+                        completed = true
+                        vmLog(
+                            "addApplicant completed",
+                            LogType.SUCCESS,
+                            metadata = mapOf("attempt" to attempt.toString(), "urn" to urn)
+                        )
+                        return true
+                    }
+                } catch (e: Exception) {
+                    lastFailureReason = e.message ?: "unknown"
+                    vmLog(
+                        "addApplicant attempt failed with exception",
+                        LogType.WARNING,
+                        metadata = mapOf(
+                            "attempt" to attempt.toString(),
+                            "error" to lastFailureReason
+                        )
+                    )
+                }
+
+                if (attempt < ADD_APPLICANT_MAX_ATTEMPTS) {
+                    vmLog(
+                        "addApplicant retry scheduled",
+                        LogType.DEBUG,
+                        metadata = mapOf(
+                            "nextAttempt" to (attempt + 1).toString(),
+                            "delayMs" to ADD_APPLICANT_RETRY_DELAY_MS.toString()
+                        )
+                    )
+                    delay(ADD_APPLICANT_RETRY_DELAY_MS)
+                }
+            }
+        } finally {
+            val finalState = if (completed) JobState.COMPLETE else JobState.STOPPED
+            dataRepository.updateAddApplicantJobState(finalState)
+            vmLog(
+                "Add applicant job state updated",
+                LogType.DEBUG,
+                metadata = mapOf("state" to finalState.name)
             )
+        }
 
-            dataRepository.saveUrn(urn = urn)
-            vmLog("addApplicant completed", LogType.SUCCESS, metadata = mapOf("urn" to urn))
+        vmLog(
+            "addApplicant failed after max attempts",
+            LogType.ERROR,
+            metadata = mapOf(
+                "attempts" to ADD_APPLICANT_MAX_ATTEMPTS.toString(),
+                "reason" to lastFailureReason
+            )
+        )
+        return false
+    }
+
+    fun addApplicantManual() {
+        viewModelScope.launch(Dispatchers.IO) {
+            addApplicant()
         }
     }
 
@@ -365,41 +485,59 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         vmLog("Check slot job state set to IN_PROGRESS", LogType.DEBUG)
 
         checkSlotJob = viewModelScope.launch(Dispatchers.IO) {
-            while (isActive) {
-                val result = calenderApi.checkIsSlotAvailable(
-                    sessionData = sessionData,
-                    entry = entryState.value,
-                    appConfig = appConfigState.value
-                )
+            var completed = false
+            try {
+                while (isActive) {
+                    val result = calenderApi.checkIsSlotAvailable(
+                        sessionData = sessionData,
+                        entry = entryState.value,
+                        appConfig = appConfigState.value
+                    )
 
-                when (result) {
-                    is SealedResult.Success -> {
-                        println("earliest Date Available at: ${result.data}")
-                        result.data?.let {
-                            vmLog("Earliest slot found", LogType.SUCCESS, metadata = mapOf("date" to it))
-                            dataRepository.saveEarliestSlotDates(it)
+                    when (result) {
+                        is SealedResult.Success -> {
+                            println("earliest Date Available at: ${result.data}")
+                            result.data?.let {
+                                vmLog("Earliest slot found", LogType.SUCCESS, metadata = mapOf("date" to it))
+                                dataRepository.saveEarliestSlotDates(it)
 
-                            FirebaseDataService.saveEarliestSlotDate(
-                                date = result.data, entry = entry
+                                FirebaseDataService.saveEarliestSlotDate(
+                                    date = result.data, entry = entry
+                                )
+                                completed = true
+                                vmLog("checkSlotJob completed after earliest slot found", LogType.SUCCESS)
+                                return@launch
+                            }
+                        }
+
+                        is SealedResult.Error -> {
+                            println(result.exception.message)
+                            vmLog(
+                                "checkIsSlotAvailable failed",
+                                LogType.ERROR,
+                                metadata = mapOf("error" to (result.exception.message ?: "unknown"))
                             )
                         }
                     }
 
-                    is SealedResult.Error -> {
-                        println(result.exception.message)
-                        vmLog(
-                            "checkIsSlotAvailable failed",
-                            LogType.ERROR,
-                            metadata = mapOf("error" to (result.exception.message ?: "unknown"))
-                        )
-                    }
+                    // ⏱ wait 3 min AFTER completion
+                    val jitterMs = jitterService.nextDelayMillis()
+                    val totalDelay = (3 * 60_000L) + jitterMs
+                    vmLog("Next slot check scheduled", LogType.DEBUG, metadata = mapOf("delayMs" to totalDelay.toString()))
+                    delay(totalDelay)
                 }
-
-                // ⏱ wait 3 min AFTER completion
-                val jitterMs = jitterService.nextDelayMillis()
-                val totalDelay = (3 * 60_000L) + jitterMs
-                vmLog("Next slot check scheduled", LogType.DEBUG, metadata = mapOf("delayMs" to totalDelay.toString()))
-                delay(totalDelay)
+            } catch (e: CancellationException) {
+                vmLog("checkSlotJob cancelled", LogType.DEBUG)
+                throw e
+            } finally {
+                val finalState = if (completed) JobState.COMPLETE else JobState.STOPPED
+                dataRepository.updateCheckSlotJobState(finalState)
+                checkSlotJob = null
+                vmLog(
+                    "Check slot job state updated",
+                    LogType.DEBUG,
+                    metadata = mapOf("state" to finalState.name)
+                )
             }
         }
     }
@@ -407,6 +545,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     fun stopCheckIsSlotAvailable() {
         vmLog("stopCheckIsSlotAvailable called", LogType.WARNING)
         checkSlotJob?.cancel()
+        checkSlotJob = null
         // change the job state
         dataRepository.updateCheckSlotJobState(JobState.STOPPED)
         vmLog("Check slot job state set to STOPPED", LogType.DEBUG)
@@ -426,66 +565,156 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         }
         val entry = entryState.value
 
+        dataRepository.updateLoadSlotJobState(JobState.IN_PROGRESS)
+        vmLog("Load slot job state set to IN_PROGRESS", LogType.DEBUG)
+
         loadSlotSlob = viewModelScope.launch(Dispatchers.IO) {
-            val earliestSlotDate = FirebaseDataService.readEarliestSlotDate(
-                entry = entry,
-            )
-            vmLog("Earliest slot date read from Firebase", LogType.DEBUG, metadata = mapOf("date" to earliestSlotDate))
+            try {
+                val earliestSlotDate = FirebaseDataService.readEarliestSlotDate(
+                    entry = entry,
+                )
+                vmLog("Earliest slot date read from Firebase", LogType.DEBUG, metadata = mapOf("date" to earliestSlotDate))
 
-            val loadSlotResult = slotApi.loadSlots(
-                sessionData = sessionData,
-                entry = entry,
-                urn = dataState.value.urn,
-                slotDate = earliestSlotDate,
-                appConfig = appConfigState.value
-            )
+                val loadSlotResult = slotApi.loadSlots(
+                    sessionData = sessionData,
+                    entry = entry,
+                    urn = dataState.value.urn,
+                    slotDate = earliestSlotDate,
+                    appConfig = appConfigState.value
+                )
 
-            when (loadSlotResult) {
-                is SealedResult.Success -> {
-                    dataRepository.saveAllocationIds(loadSlotResult.data)
-                    startSchedule(loadSlotResult.data)
+                when (loadSlotResult) {
+                    is SealedResult.Success -> {
+                        dataRepository.saveAllocationIds(loadSlotResult.data)
+                        startSchedule(loadSlotResult.data)
 
 
-                    vmLog(
-                        "loadTimeSlot success",
-                        LogType.SUCCESS,
-                        metadata = mapOf(
-                            "earliestSlotDate" to earliestSlotDate,
-                            "allocationCount" to loadSlotResult.data.size.toString()
+                        vmLog(
+                            "loadTimeSlot success",
+                            LogType.SUCCESS,
+                            metadata = mapOf(
+                                "earliestSlotDate" to earliestSlotDate,
+                                "allocationCount" to loadSlotResult.data.size.toString()
+                            )
                         )
-                    )
+                    }
+
+                    is SealedResult.Error -> {
+                        println(loadSlotResult.exception.message)
+                        vmLog(
+                            "loadTimeSlot failed",
+                            LogType.ERROR,
+                            metadata = mapOf("error" to (loadSlotResult.exception.message ?: "unknown"))
+                        )
+                    }
                 }
 
-                is SealedResult.Error -> {
-                    println(loadSlotResult.exception.message)
-                    vmLog(
-                        "loadTimeSlot failed",
-                        LogType.ERROR,
-                        metadata = mapOf("error" to (loadSlotResult.exception.message ?: "unknown"))
-                    )
-                }
+
+                println("Earliest Slot Date received via firebase: $earliestSlotDate")
+            } catch (e: CancellationException) {
+                vmLog("loadSlotJob cancelled", LogType.DEBUG)
+                throw e
+            } finally {
+                loadSlotSlob = null
+                dataRepository.updateLoadSlotJobState(JobState.STOPPED)
+                vmLog("Load slot job state set to STOPPED", LogType.DEBUG)
             }
-
-
-            println("Earliest Slot Date received via firebase: $earliestSlotDate")
         }
     }
 
     fun stopLoadTimeSlot() {
         vmLog("stopLoadTimeSlot called", LogType.WARNING)
         loadSlotSlob?.cancel()
+        loadSlotSlob = null
         // change the job state
         dataRepository.updateLoadSlotJobState(JobState.STOPPED)
         vmLog("Load slot job state set to STOPPED", LogType.DEBUG)
     }
 
 
-    fun startSchedule(allocationIds: List<String>) {
-        println("startSchedule: $allocationIds")
+    suspend fun startSchedule(allocationIds: List<String>) {
+        if (allocationIds.isEmpty()) {
+            vmLog("startSchedule skipped: no allocationIds", LogType.WARNING)
+            return
+        }
+
+        val sessionData = sessionState.value ?: run {
+            vmLog("startSchedule skipped: session is null", LogType.WARNING)
+            return
+        }
+        val entry = entryState.value
+        val urn = dataState.value.urn
+        if (urn.isBlank()) {
+            vmLog("startSchedule skipped: urn is blank", LogType.WARNING)
+            return
+        }
+
         vmLog(
-            "startSchedule called",
+            "startSchedule started",
+            LogType.INFO,
+            metadata = mapOf(
+                "allocationCount" to allocationIds.size.toString(),
+                "urnPresent" to "true"
+            )
+        )
+
+        val randomizedAllocationIds = allocationIds.shuffled()
+        vmLog(
+            "Allocation IDs randomized before scheduling",
             LogType.DEBUG,
-            metadata = mapOf("allocationCount" to allocationIds.size.toString())
+            metadata = mapOf("allocationCount" to randomizedAllocationIds.size.toString())
+        )
+
+        randomizedAllocationIds.forEachIndexed { index, allocationId ->
+            val attemptNo = index + 1
+            vmLog(
+                "Schedule attempt started",
+                LogType.INFO,
+                metadata = mapOf(
+                    "attempt" to attemptNo.toString(),
+                    "totalAttempts" to randomizedAllocationIds.size.toString(),
+                    "allocationId" to allocationId
+                )
+            )
+
+            when (val scheduleResult = scheduleApi.schedule(
+                sessionData = sessionData,
+                entry = entry,
+                urn = urn,
+                allocationId = allocationId
+            )) {
+                is SealedResult.Success -> {
+                    vmLog(
+                        "Schedule attempt succeeded",
+                        LogType.SUCCESS,
+                        metadata = mapOf(
+                            "attempt" to attemptNo.toString(),
+                            "allocationId" to allocationId,
+                            "statusCode" to scheduleResult.data.statusCode.toString()
+                        )
+                    )
+                    return
+                }
+
+                is SealedResult.Error -> {
+                    vmLog(
+                        "Schedule attempt failed",
+                        LogType.WARNING,
+                        metadata = mapOf(
+                            "attempt" to attemptNo.toString(),
+                            "allocationId" to allocationId,
+                            "error" to (scheduleResult.exception.message ?: "unknown")
+                        )
+                    )
+                }
+            }
+        }
+
+        vmLog(
+            "All schedule attempts failed",
+            LogType.ERROR,
+            critical = true,
+            metadata = mapOf("attemptedAllocationCount" to randomizedAllocationIds.size.toString())
         )
     }
 

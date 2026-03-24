@@ -144,7 +144,7 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
                         onAction = { action ->
                             when (action) {
                                 AppControlAction.LoadApplicants -> viewModel.loadApplicants()
-                                AppControlAction.AddApplicants -> viewModel.addApplicant()
+                                AppControlAction.AddApplicants -> viewModel.addApplicantManual()
                                 AppControlAction.LoadCalendar -> viewModel.loadCalender()
                                 AppControlAction.Logout -> viewModel.logout()
                                 AppControlAction.StartCheckIsSlotAvailable -> viewModel.startCheckIsSlotAvailable()

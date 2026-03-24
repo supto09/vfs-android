@@ -2,6 +2,8 @@ package com.example.vfsgm.ui.components
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.Build
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
@@ -103,6 +105,10 @@ private fun buildTurnstileOnlyWebView(
     onJsToken: (String?) -> Unit
 ): WebView = WebView(context).apply {
     WebView.setWebContentsDebuggingEnabled(true)
+    if (shouldForceSoftwareWebView()) {
+        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        AppLogService.log(deviceIndex, "Forced WebView software rendering mode", LogType.WARNING, tag = "TurnstileWebView")
+    }
     settings.javaScriptEnabled = true
     settings.domStorageEnabled = true
     settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
@@ -126,6 +132,19 @@ private fun buildTurnstileOnlyWebView(
     }
 
     addJavascriptInterface(TurnstileBridge(deviceIndex, onJsToken), "AndroidTurnstile")
+}
+
+private fun shouldForceSoftwareWebView(): Boolean {
+    val fp = Build.FINGERPRINT.lowercase()
+    val model = Build.MODEL.lowercase()
+    val product = Build.PRODUCT.lowercase()
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    return fp.contains("generic") ||
+        fp.contains("emulator") ||
+        model.contains("emulator") ||
+        model.contains("sdk") ||
+        product.contains("sdk") ||
+        manufacturer.contains("genymotion")
 }
 
 /** Loads a minimal HTML that renders Turnstile; baseUrl sets the document origin to your host */

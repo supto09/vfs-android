@@ -34,7 +34,7 @@ class ApplicantApi {
     }
 
 
-    fun loadApplicants(sessionData: SessionData, entry: Entry, appConfig: AppConfig) {
+    suspend fun loadApplicants(sessionData: SessionData, entry: Entry, appConfig: AppConfig) {
         val requestBodyJson = """
             {
               "countryCode": "${entry.countryCode}",
@@ -67,23 +67,19 @@ class ApplicantApi {
             addHeader("Referer", "https://visa.vfsglobal.com/")
         }.build()
 
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                e.printStackTrace()
-            }
+        val call = client.newCall(request)
+        call.await().use { res ->
+            val bodyStr = res.body?.string().orEmpty()
+            println("LoadApplicants Status: ${res.code}")
+            println(bodyStr)
 
-            override fun onResponse(call: Call, response: Response) {
-                response.use {
-                    println("Status: ${it.code}")
-                    println(it.body?.string())
+            AppLogService.log(
+                appConfig.deviceIndex,
+                "LoadApplicants: Status: ${res.code} Body: $bodyStr"
+            )
 
-                    AppLogService.log(
-                        appConfig.deviceIndex,
-                        "LoadApplicants: Status: ${it.code} Body: ${it.body}"
-                    )
-                }
-            }
-        })
+            if (!res.isSuccessful) throw IOException("HTTP ${res.code}: $bodyStr")
+        }
     }
 
     suspend fun addApplicant(

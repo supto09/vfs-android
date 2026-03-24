@@ -32,6 +32,14 @@ class DataRepository() {
         _state.update { it.copy(checkSlotJobRunning = jobState) }
     }
 
+    fun updateLoadApplicantsJobState(jobState: JobState) {
+        _state.update { it.copy(loadApplicantsJobRunning = jobState) }
+    }
+
+    fun updateAddApplicantJobState(jobState: JobState) {
+        _state.update { it.copy(addApplicantJobRunning = jobState) }
+    }
+
     fun updateLoadSlotJobState(jobState: JobState) {
         _state.update { it.copy(loadSlotJobRunning = jobState) }
     }

@@ -21,7 +21,8 @@ fun AppControlPanel(
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         MySolidButton(
             onClick = { onAction(AppControlAction.LoadApplicants) },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = dataState.loadApplicantsJobRunning != JobState.IN_PROGRESS
         ) {
             Text("Load Applicants")
         }
@@ -29,6 +30,7 @@ fun AppControlPanel(
         MySolidButton(
             onClick = { onAction(AppControlAction.AddApplicants) },
             modifier = Modifier.fillMaxWidth(),
+            enabled = dataState.addApplicantJobRunning != JobState.IN_PROGRESS
         ) {
             Text("Add Applicants")
         }
@@ -62,7 +64,7 @@ fun AppControlPanel(
             MySolidButton(
                 onClick = { onAction(AppControlAction.LoadSlot) },
                 modifier = Modifier.weight(2f),
-                enabled = dataState.checkSlotJobRunning !== JobState.IN_PROGRESS
+                enabled = dataState.loadSlotJobRunning !== JobState.IN_PROGRESS
             ) {
                 Text("Load Slot")
             }

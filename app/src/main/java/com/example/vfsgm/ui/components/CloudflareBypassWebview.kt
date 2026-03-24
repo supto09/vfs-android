@@ -4,6 +4,7 @@ package com.example.vfsgm.ui.components
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -89,6 +90,16 @@ fun CloudflareBypassWebview(
             factory = {
                 val webView = WebView(context)
                 webViewRef = webView
+
+                if (shouldForceSoftwareWebView()) {
+                    webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+                    AppLogService.log(
+                        deviceIndex,
+                        "Forced WebView software rendering mode",
+                        LogType.WARNING,
+                        tag = "CloudflareWebView"
+                    )
+                }
 
                 // =========================
                 // 1) BASIC WEBVIEW SETTINGS
@@ -361,6 +372,19 @@ fun CloudflareBypassWebview(
             }
         )
     }
+}
+
+private fun shouldForceSoftwareWebView(): Boolean {
+    val fp = Build.FINGERPRINT.lowercase()
+    val model = Build.MODEL.lowercase()
+    val product = Build.PRODUCT.lowercase()
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    return fp.contains("generic") ||
+        fp.contains("emulator") ||
+        model.contains("emulator") ||
+        model.contains("sdk") ||
+        product.contains("sdk") ||
+        manufacturer.contains("genymotion")
 }
 
 fun syncCookiesFromWebViewToOkHttp(context: Context, webUrl: String, deviceIndex: Int) {

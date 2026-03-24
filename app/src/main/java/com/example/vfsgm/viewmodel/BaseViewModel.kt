@@ -7,6 +7,7 @@ import com.example.vfsgm.data.api.ApplicantApi
 import com.example.vfsgm.data.api.AuthApi
 import com.example.vfsgm.data.api.CalenderApi
 import com.example.vfsgm.data.api.LeasedAccountApi
+import com.example.vfsgm.data.api.ScheduleApi
 import com.example.vfsgm.data.api.SlotApi
 import com.example.vfsgm.data.repository.AppConfigRepository
 import com.example.vfsgm.data.repository.DataRepository
@@ -34,6 +35,7 @@ open class BaseViewModel(application: Application) : AndroidViewModel(applicatio
     val calenderApi = CalenderApi()
     val jitterService = JitterService()
     val slotApi = SlotApi()
+    val scheduleApi = ScheduleApi()
 
 
     // jobs
