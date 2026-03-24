@@ -119,6 +119,8 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         vmLog("Stopping child jobs", LogType.WARNING)
         checkSlotJob?.cancel()
         checkSlotJob = null
+        loadSlotSlob?.cancel()
+        loadSlotSlob = null
     }
 
     fun startPeriodicReLogin() {
