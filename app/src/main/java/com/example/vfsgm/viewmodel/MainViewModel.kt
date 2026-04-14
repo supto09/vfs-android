@@ -41,11 +41,219 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         const val ADD_APPLICANT_MAX_ATTEMPTS = 5
         const val ADD_APPLICANT_RETRY_DELAY_MS = 10_000L
         const val FIXED_LOGIN_OTP = "658992"
+        const val TOTAL_FOLLOWER_APPS = 5
+        const val FOLLOWER_PRIORITY_COUNT = 3
+        const val FOLLOWER_MAX_DATES = 3
+        const val FOLLOWER_SLOT_ROUNDS = 2
+        const val FINDER_SLOT_RETRY_COUNT = 3
+        const val SLOT_LOAD_RETRY_DELAY_MS = 3_000L
     }
 
     private sealed interface LoginAttemptOutcome {
         data object Success : LoginAttemptOutcome
         data object Failure : LoginAttemptOutcome
+    }
+
+    private sealed interface SlotLoadAttemptOutcome {
+        data class Success(val allocationIds: List<String>) : SlotLoadAttemptOutcome
+        data class Failure(val reason: String) : SlotLoadAttemptOutcome
+    }
+
+    @Volatile
+    private var isCurrentCycleFinder: Boolean = false
+
+    @Volatile
+    private var currentCycleEarliestDate: String? = null
+
+    @Volatile
+    private var followerPriorityDates: List<String> = emptyList()
+
+    private fun resetCycleCoordinationState(reason: String) {
+        isCurrentCycleFinder = false
+        currentCycleEarliestDate = null
+        followerPriorityDates = emptyList()
+        vmLog(
+            "Cycle coordination state reset",
+            LogType.DEBUG,
+            metadata = mapOf("reason" to reason)
+        )
+    }
+
+    private fun computeFollowerPriorityDates(
+        availableDates: List<String>,
+        deviceIndex: Int
+    ): List<String> {
+        val uniqueDates = availableDates.distinct()
+        val dateCount = uniqueDates.size
+        if (dateCount == 0) return emptyList()
+
+        val bucketSize = minOf(TOTAL_FOLLOWER_APPS, dateCount)
+        val startOffset = ((deviceIndex - 1).coerceAtLeast(0)) % bucketSize
+        val targetCount = minOf(FOLLOWER_PRIORITY_COUNT, dateCount)
+
+        val prioritized = ArrayList<String>(targetCount)
+        var step = 0
+        while (prioritized.size < targetCount && step < dateCount) {
+            val idx = (startOffset + step) % dateCount
+            val date = uniqueDates[idx]
+            if (prioritized.none { it == date }) prioritized.add(date)
+            step += 1
+        }
+        return prioritized
+    }
+
+    private fun buildFollowerSlotAttemptDates(priorityDates: List<String>): List<String> {
+        val baseDates = priorityDates
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(FOLLOWER_MAX_DATES)
+            .toList()
+        if (baseDates.isEmpty()) return emptyList()
+
+        return buildList(baseDates.size * FOLLOWER_SLOT_ROUNDS) {
+            repeat(FOLLOWER_SLOT_ROUNDS) {
+                addAll(baseDates)
+            }
+        }
+    }
+
+    private suspend fun loadSlotsOnce(
+        sessionData: SessionData,
+        entry: Entry,
+        slotDate: String
+    ): SlotLoadAttemptOutcome {
+        val loadSlotResult = slotApi.loadSlots(
+            sessionData = sessionData,
+            entry = entry,
+            urn = dataState.value.urn,
+            slotDate = slotDate,
+            appConfig = appConfigState.value
+        )
+        return when (loadSlotResult) {
+            is SealedResult.Success -> {
+                if (loadSlotResult.data.isEmpty()) {
+                    SlotLoadAttemptOutcome.Failure("empty allocations")
+                } else {
+                    SlotLoadAttemptOutcome.Success(loadSlotResult.data)
+                }
+            }
+
+            is SealedResult.Error -> {
+                SlotLoadAttemptOutcome.Failure(loadSlotResult.exception.message ?: "unknown")
+            }
+        }
+    }
+
+    private suspend fun runLoadSlotAttempts(
+        sessionData: SessionData,
+        entry: Entry,
+        attemptDates: List<String>,
+        baseDateCount: Int
+    ) {
+        var succeeded = false
+
+        for ((index, slotDate) in attemptDates.withIndex()) {
+            val attemptNo = index + 1
+            val roundNo = if (baseDateCount > 0) (index / baseDateCount) + 1 else 1
+            vmLog(
+                "loadTimeSlot attempt started",
+                LogType.DEBUG,
+                metadata = mapOf(
+                    "attempt" to attemptNo.toString(),
+                    "round" to roundNo.toString(),
+                    "slotDate" to slotDate
+                )
+            )
+
+            val outcome = loadSlotsOnce(
+                sessionData = sessionData,
+                entry = entry,
+                slotDate = slotDate
+            )
+            when (outcome) {
+                is SlotLoadAttemptOutcome.Success -> {
+                    dataRepository.saveAllocationIds(outcome.allocationIds)
+                    startSchedule(outcome.allocationIds)
+                    vmLog(
+                        "loadTimeSlot success",
+                        LogType.SUCCESS,
+                        metadata = mapOf(
+                            "attempt" to attemptNo.toString(),
+                            "round" to roundNo.toString(),
+                            "slotDate" to slotDate,
+                            "allocationCount" to outcome.allocationIds.size.toString()
+                        )
+                    )
+                    succeeded = true
+                    return
+                }
+
+                is SlotLoadAttemptOutcome.Failure -> {
+                    vmLog(
+                        "loadTimeSlot attempt failed",
+                        LogType.WARNING,
+                        metadata = mapOf(
+                            "attempt" to attemptNo.toString(),
+                            "round" to roundNo.toString(),
+                            "slotDate" to slotDate,
+                            "reason" to outcome.reason
+                        )
+                    )
+                    if (attemptNo < attemptDates.size) {
+                        delay(SLOT_LOAD_RETRY_DELAY_MS)
+                    }
+                }
+            }
+        }
+
+        if (!succeeded) {
+            vmLog(
+                "loadTimeSlot exhausted all attempts",
+                LogType.ERROR,
+                metadata = mapOf("attemptCount" to attemptDates.size.toString())
+            )
+        }
+    }
+
+    @Synchronized
+    private fun startLoadSlotJob(
+        sessionData: SessionData,
+        entry: Entry,
+        attemptDates: List<String>,
+        baseDateCount: Int
+    ) {
+        if (loadSlotSlob?.isActive == true) {
+            vmLog("loadTimeSlot ignored because job is already active", LogType.WARNING)
+            return
+        }
+
+        if (attemptDates.isEmpty()) {
+            vmLog("loadTimeSlot skipped: no attempt dates", LogType.WARNING)
+            return
+        }
+
+        dataRepository.updateLoadSlotJobState(JobState.IN_PROGRESS)
+        vmLog("Load slot job state set to IN_PROGRESS", LogType.DEBUG)
+
+        loadSlotSlob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                runLoadSlotAttempts(
+                    sessionData = sessionData,
+                    entry = entry,
+                    attemptDates = attemptDates,
+                    baseDateCount = baseDateCount
+                )
+            } catch (e: CancellationException) {
+                vmLog("loadSlotJob cancelled", LogType.DEBUG)
+                throw e
+            } finally {
+                loadSlotSlob = null
+                dataRepository.updateLoadSlotJobState(JobState.STOPPED)
+                vmLog("Load slot job state set to STOPPED", LogType.DEBUG)
+            }
+        }
     }
 
     private fun vmLog(
@@ -95,7 +303,10 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 .map { it.entryIndex }
                 .distinctUntilChanged()
                 .collect { entryIndex ->
-                    vmLog("Loading entry for changed entryIndex", metadata = mapOf("entryIndex" to entryIndex.toString()))
+                    vmLog(
+                        "Loading entry for changed entryIndex",
+                        metadata = mapOf("entryIndex" to entryIndex.toString())
+                    )
                     try {
                         entryRepository.loadEntry(entryIndex = entryIndex)
                         val loadedEntry = entryState.value
@@ -124,6 +335,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     fun stopAllChildJob() {
         vmLog("Stopping child jobs", LogType.WARNING)
+        resetCycleCoordinationState("stopAllChildJob")
         loginJob?.cancel()
         loginJob = null
         verifyOtpJob?.cancel()
@@ -160,15 +372,21 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             vmLog("ReLogin loop started")
             while (isActive) {
                 try {
+                    resetCycleCoordinationState("reLogin cycle start")
                     vmLog("ReLogin cycle: logout start", LogType.DEBUG)
-                    logout()
+                    stopAllChildJob()
+                    sessionRepository.clearSession()
+                    vmLog("ReLogin cycle: session cleared", LogType.DEBUG)
 
                     vmLog("ReLogin cycle: waiting for CF cookie", LogType.DEBUG)
                     CfCookieCheckManager.waitUntilCfCookieKeyExists()
 
                     vmLog("ReLogin cycle: login start", LogType.DEBUG)
                     login {
-                        vmLog("ReLogin callback: login complete, triggering applicant+slot jobs", LogType.SUCCESS)
+                        vmLog(
+                            "ReLogin callback: login complete, triggering applicant+slot jobs",
+                            LogType.SUCCESS
+                        )
                         viewModelScope.launch(Dispatchers.IO) {
                             addApplicant(triggerSlotFlowOnSuccess = true)
                         }
@@ -207,7 +425,8 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             )
         )
 
-        val leasedAccount = when (val res = leasedAccountApi.leaseAccount(entry)) {
+        val res = leasedAccountApi.leaseAccount(entry)
+        val leasedAccount = when (res) {
             is SealedResult.Success -> res.data
             is SealedResult.Error -> null
         } ?: run {
@@ -265,7 +484,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
                 dataRepository.updateVerifyOtpJobState(JobState.IN_PROGRESS)
                 return try {
-                    when (val otpOutcome = authApi.verifyOtp(
+                    val otpOutcome = authApi.verifyOtp(
                         username = leasedAccount.email,
                         password = leasedAccount.password,
                         cloudflareToken = cloudflareToken,
@@ -273,7 +492,8 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                         missionCode = leasedAccount.missionCode,
                         otp = FIXED_LOGIN_OTP,
                         appConfig = appConfigState.value
-                    )) {
+                    )
+                    when (otpOutcome) {
                         is LoginOutcome.Success -> {
                             sessionRepository.saveSessionData(
                                 SessionData(
@@ -288,7 +508,11 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
                         is LoginOutcome.OtpRequired -> {
                             dataRepository.updateVerifyOtpJobState(JobState.STOPPED)
-                            vmLog("Auto OTP verification still requires OTP", LogType.ERROR, critical = true)
+                            vmLog(
+                                "Auto OTP verification still requires OTP",
+                                LogType.ERROR,
+                                critical = true
+                            )
                             LoginAttemptOutcome.Failure
                         }
 
@@ -352,13 +576,21 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
             val maxAttempts = 5
             var delayMs = 1000L
-            vmLog("Login flow started", LogType.INFO, metadata = mapOf("maxAttempts" to maxAttempts.toString()))
+            vmLog(
+                "Login flow started",
+                LogType.INFO,
+                metadata = mapOf("maxAttempts" to maxAttempts.toString())
+            )
 
             try {
                 repeat(maxAttempts) { attemptIndex ->
                     if (!isActive) return@launch
 
-                    vmLog("Login attempt started", LogType.DEBUG, metadata = mapOf("attempt" to (attemptIndex + 1).toString()))
+                    vmLog(
+                        "Login attempt started",
+                        LogType.DEBUG,
+                        metadata = mapOf("attempt" to (attemptIndex + 1).toString())
+                    )
                     val outcome = try {
                         attemptLoginOnce(entry)
                     } catch (e: CancellationException) {
@@ -369,7 +601,10 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                         vmLog(
                             "Login attempt crashed",
                             LogType.ERROR,
-                            metadata = mapOf("attempt" to (attemptIndex + 1).toString(), "error" to (e.message ?: "unknown"))
+                            metadata = mapOf(
+                                "attempt" to (attemptIndex + 1).toString(),
+                                "error" to (e.message ?: "unknown")
+                            )
                         )
                         LoginAttemptOutcome.Failure
                     }
@@ -378,7 +613,11 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                         LoginAttemptOutcome.Success -> {
                             dataRepository.updateLoginJobState(JobState.COMPLETE)
                             dataRepository.updateOtpVerificationRequired(false)
-                            vmLog("Login attempt succeeded", LogType.SUCCESS, metadata = mapOf("attempt" to (attemptIndex + 1).toString()))
+                            vmLog(
+                                "Login attempt succeeded",
+                                LogType.SUCCESS,
+                                metadata = mapOf("attempt" to (attemptIndex + 1).toString())
+                            )
                             delay(1000L)
                             withContext(Dispatchers.Main) { onLoginComplete?.invoke() }
                             return@launch
@@ -387,7 +626,11 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                         LoginAttemptOutcome.Failure -> {
                             val isLast = attemptIndex == maxAttempts - 1
                             if (!isLast) {
-                                vmLog("Login attempt failed, backing off", LogType.WARNING, metadata = mapOf("nextDelayMs" to delayMs.toString()))
+                                vmLog(
+                                    "Login attempt failed, backing off",
+                                    LogType.WARNING,
+                                    metadata = mapOf("nextDelayMs" to delayMs.toString())
+                                )
                                 delay(delayMs)
                                 delayMs = (delayMs * 2).coerceAtMost(15_000L)
                             }
@@ -517,9 +760,12 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                             metadata = mapOf("attempt" to attempt.toString(), "urn" to urn)
                         )
                         if (triggerSlotFlowOnSuccess) {
-                            vmLog("addApplicant success: starting loadTimeSlot and checkSlot jobs", LogType.DEBUG)
-                            loadTimeSlot()
+                            vmLog(
+                                "addApplicant success: starting checkSlot and loadCalender jobs",
+                                LogType.DEBUG
+                            )
                             startCheckIsSlotAvailable()
+                            loadCalender()
                         }
                         return true
                     }
@@ -574,6 +820,14 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         return false
     }
 
+    fun stopLoadApplicants() {
+        vmLog("stopLoadApplicants called", LogType.WARNING)
+        loadApplicantsJob?.cancel()
+        loadApplicantsJob = null
+        dataRepository.updateLoadApplicantsJobState(JobState.STOPPED)
+        vmLog("Load applicants job state set to STOPPED", LogType.DEBUG)
+    }
+
     fun addApplicantManual() {
         if (addApplicantJob?.isActive == true || dataState.value.addApplicantJobRunning == JobState.IN_PROGRESS) {
             vmLog("addApplicantManual ignored because job is already active", LogType.WARNING)
@@ -591,77 +845,12 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    fun stopLoadApplicants() {
-        vmLog("stopLoadApplicants called", LogType.WARNING)
-        loadApplicantsJob?.cancel()
-        loadApplicantsJob = null
-        dataRepository.updateLoadApplicantsJobState(JobState.STOPPED)
-        vmLog("Load applicants job state set to STOPPED", LogType.DEBUG)
-    }
-
     fun stopAddApplicant() {
         vmLog("stopAddApplicant called", LogType.WARNING)
         addApplicantJob?.cancel()
         addApplicantJob = null
         dataRepository.updateAddApplicantJobState(JobState.STOPPED)
         vmLog("Add applicant job state set to STOPPED", LogType.DEBUG)
-    }
-
-    fun loadCalender() {
-        if (loadCalenderJob?.isActive == true || dataState.value.loadCalenderJobRunning == JobState.IN_PROGRESS) {
-            vmLog("loadCalender ignored because job is already active", LogType.WARNING)
-            return
-        }
-        val sessionData = sessionState.value ?: run {
-            vmLog("loadCalender skipped: session is null", LogType.WARNING)
-            return
-        }
-        val entry = entryState.value
-        vmLog("loadCalender started", LogType.DEBUG, metadata = mapOf("urn" to dataState.value.urn))
-
-        loadCalenderJob = viewModelScope.launch(Dispatchers.IO) {
-            dataRepository.updateLoadCalenderJobState(JobState.IN_PROGRESS)
-            var completed = false
-            try {
-                val result = calenderApi.loadCalender(
-                    sessionData = sessionData, entry = entry, urn = dataState.value.urn
-                )
-                when (result) {
-                    is SealedResult.Success -> {
-                        dataRepository.saveAvailableDates(dates = result.data)
-                        completed = true
-                        vmLog(
-                            "loadCalender success",
-                            LogType.SUCCESS,
-                            metadata = mapOf("dateCount" to result.data.size.toString())
-                        )
-                    }
-                    is SealedResult.Error -> {
-                        println(result.exception.message)
-                        vmLog(
-                            "loadCalender failed",
-                            LogType.ERROR,
-                            metadata = mapOf("error" to (result.exception.message ?: "unknown"))
-                        )
-                    }
-                }
-            } catch (e: CancellationException) {
-                vmLog("loadCalender job cancelled", LogType.DEBUG)
-                throw e
-            } finally {
-                val finalState = if (completed) JobState.COMPLETE else JobState.STOPPED
-                dataRepository.updateLoadCalenderJobState(finalState)
-                loadCalenderJob = null
-            }
-        }
-    }
-
-    fun stopLoadCalender() {
-        vmLog("stopLoadCalender called", LogType.WARNING)
-        loadCalenderJob?.cancel()
-        loadCalenderJob = null
-        dataRepository.updateLoadCalenderJobState(JobState.STOPPED)
-        vmLog("Load calender job state set to STOPPED", LogType.DEBUG)
     }
 
     fun startCheckIsSlotAvailable() {
@@ -696,14 +885,36 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                         is SealedResult.Success -> {
                             println("earliest Date Available at: ${result.data}")
                             result.data?.let {
-                                vmLog("Earliest slot found", LogType.SUCCESS, metadata = mapOf("date" to it))
-                                dataRepository.saveEarliestSlotDates(it)
+                                isCurrentCycleFinder = true
+                                currentCycleEarliestDate = it
+                                vmLog(
+                                    "Earliest slot found",
+                                    LogType.SUCCESS,
+                                    metadata = mapOf("date" to it)
+                                )
 
                                 FirebaseDataService.saveEarliestSlotDate(
                                     date = result.data, entry = entry
                                 )
+                                if (loadCalenderJob?.isActive == true) {
+                                    vmLog("Finder flow: stopping loadCalender job", LogType.DEBUG)
+                                    stopLoadCalender()
+                                }
+                                if (loadSlotSlob?.isActive == true) {
+                                    vmLog("Finder flow: stopping running loadTimeSlot job", LogType.DEBUG)
+                                    stopLoadTimeSlot()
+                                }
+                                vmLog(
+                                    "Finder flow: starting loadTimeSlot",
+                                    LogType.DEBUG,
+                                    metadata = mapOf("date" to it)
+                                )
+                                loadTimeSlot()
                                 completed = true
-                                vmLog("checkSlotJob completed after earliest slot found", LogType.SUCCESS)
+                                vmLog(
+                                    "checkSlotJob completed after earliest slot found",
+                                    LogType.SUCCESS
+                                )
                                 return@launch
                             }
                         }
@@ -721,7 +932,11 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     // ⏱ wait 3 min AFTER completion
                     val jitterMs = jitterService.nextDelayMillis()
                     val totalDelay = (3 * 60_000L) + jitterMs
-                    vmLog("Next slot check scheduled", LogType.DEBUG, metadata = mapOf("delayMs" to totalDelay.toString()))
+                    vmLog(
+                        "Next slot check scheduled",
+                        LogType.DEBUG,
+                        metadata = mapOf("delayMs" to totalDelay.toString())
+                    )
                     delay(totalDelay)
                 }
             } catch (e: CancellationException) {
@@ -749,8 +964,158 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         vmLog("Check slot job state set to STOPPED", LogType.DEBUG)
     }
 
+    fun loadCalender() {
+        if (loadCalenderJob?.isActive == true || dataState.value.loadCalenderJobRunning == JobState.IN_PROGRESS) {
+            vmLog("loadCalender ignored because job is already active", LogType.WARNING)
+            return
+        }
+        val sessionData = sessionState.value ?: run {
+            vmLog("loadCalender skipped: session is null", LogType.WARNING)
+            return
+        }
+        val entry = entryState.value
+        vmLog("loadCalender started (finder/follower mode)", LogType.DEBUG)
 
-    fun loadTimeSlot() {
+        loadCalenderJob = viewModelScope.launch(Dispatchers.IO) {
+            dataRepository.updateLoadCalenderJobState(JobState.IN_PROGRESS)
+            var completed = false
+            try {
+                val earliestSlotDate = FirebaseDataService.readEarliestSlotDate(entry = entry)
+                currentCycleEarliestDate = earliestSlotDate
+                vmLog(
+                    "loadCalender received earliest slot date from Firebase",
+                    LogType.SUCCESS,
+                    metadata = mapOf("date" to earliestSlotDate)
+                )
+
+                if (checkSlotJob?.isActive == true || dataState.value.checkSlotJobRunning == JobState.IN_PROGRESS) {
+                    vmLog("loadCalender stopping running checkSlot job", LogType.DEBUG)
+                    stopCheckIsSlotAvailable()
+                }
+
+                if (isCurrentCycleFinder) {
+                    vmLog(
+                        "loadCalender exiting early for finder app",
+                        LogType.DEBUG,
+                        metadata = mapOf("date" to earliestSlotDate)
+                    )
+                    followerPriorityDates = emptyList()
+                    completed = true
+                    return@launch
+                }
+
+                val result = calenderApi.loadCalender(
+                    sessionData = sessionData, entry = entry, urn = dataState.value.urn
+                )
+                when (result) {
+                    is SealedResult.Success -> {
+                        dataRepository.saveAvailableDates(dates = result.data)
+                        val priorityDates = computeFollowerPriorityDates(
+                            availableDates = result.data,
+                            deviceIndex = appConfigState.value.deviceIndex
+                        )
+                        followerPriorityDates = priorityDates
+                        val selectedFollowerDate = priorityDates.firstOrNull()
+                        vmLog(
+                            "loadCalender follower path success",
+                            LogType.SUCCESS,
+                            metadata = mapOf(
+                                "deviceIndex" to appConfigState.value.deviceIndex.toString(),
+                                "dateCount" to result.data.size.toString(),
+                                "selectedPriorityDates" to priorityDates.joinToString("|"),
+                                "selectedDate" to (selectedFollowerDate ?: "")
+                            )
+                        )
+                        if (selectedFollowerDate != null) {
+                            val attemptDates = buildFollowerSlotAttemptDates(priorityDates)
+                            val sessionDataForSlot = sessionState.value
+                            if (sessionDataForSlot == null) {
+                                vmLog("Follower flow: loadTimeSlot skipped due to missing session", LogType.WARNING)
+                            } else if (loadSlotSlob?.isActive == true) {
+                                vmLog("Follower flow: loadTimeSlot skipped because job is already active", LogType.WARNING)
+                            } else {
+                                startLoadSlotJob(
+                                    sessionData = sessionDataForSlot,
+                                    entry = entry,
+                                    attemptDates = attemptDates,
+                                    baseDateCount = minOf(priorityDates.distinct().size, FOLLOWER_MAX_DATES)
+                                )
+                            }
+                        } else {
+                            vmLog(
+                                "Follower flow: no prioritized date available for loadTimeSlot",
+                                LogType.WARNING
+                            )
+                        }
+                    }
+
+                    is SealedResult.Error -> {
+                        println(result.exception.message)
+                        throw result.exception
+                    }
+                }
+                completed = true
+            } catch (e: CancellationException) {
+                vmLog("loadCalender job cancelled", LogType.DEBUG)
+                throw e
+            } catch (e: Exception) {
+                vmLog(
+                    "loadCalender failed (finder/follower mode)",
+                    LogType.ERROR,
+                    metadata = mapOf("error" to (e.message ?: "unknown"))
+                )
+            } finally {
+                val finalState = if (completed) JobState.COMPLETE else JobState.STOPPED
+                dataRepository.updateLoadCalenderJobState(finalState)
+                loadCalenderJob = null
+            }
+        }
+    }
+
+    fun stopLoadCalender() {
+        vmLog("stopLoadCalender called", LogType.WARNING)
+        loadCalenderJob?.cancel()
+        loadCalenderJob = null
+        dataRepository.updateLoadCalenderJobState(JobState.STOPPED)
+        vmLog("Load calender job state set to STOPPED", LogType.DEBUG)
+    }
+
+    private suspend fun resolveTargetSlotDate(
+        entry: Entry,
+        selectedDate: String?
+    ): String {
+        currentCycleEarliestDate
+            ?.takeIf { isCurrentCycleFinder && it.isNotBlank() }
+            ?.also {
+                vmLog(
+                    "Finder flow: using in-memory earliest slot date",
+                    LogType.DEBUG,
+                    metadata = mapOf("date" to it)
+                )
+            }
+            ?.let { return it }
+
+        selectedDate
+            ?.takeIf { it.isNotBlank() }
+            ?.also {
+                vmLog(
+                    "loadTimeSlot using follower-selected date",
+                    LogType.DEBUG,
+                    metadata = mapOf("date" to it)
+                )
+            }
+            ?.let { return it }
+
+        return FirebaseDataService.readEarliestSlotDate(entry = entry).also {
+            vmLog(
+                "Follower flow: earliest slot date read from Firebase",
+                LogType.DEBUG,
+                metadata = mapOf("date" to it)
+            )
+        }
+    }
+
+    fun loadTimeSlot(selectedDate: String? = null) {
         // Prevent double-start
         if (loadSlotSlob?.isActive == true) return
 
@@ -763,60 +1128,22 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         }
         val entry = entryState.value
 
-        dataRepository.updateLoadSlotJobState(JobState.IN_PROGRESS)
-        vmLog("Load slot job state set to IN_PROGRESS", LogType.DEBUG)
-
-        loadSlotSlob = viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val earliestSlotDate = FirebaseDataService.readEarliestSlotDate(
-                    entry = entry,
-                )
-                vmLog("Earliest slot date read from Firebase", LogType.DEBUG, metadata = mapOf("date" to earliestSlotDate))
-
-                val loadSlotResult = slotApi.loadSlots(
-                    sessionData = sessionData,
-                    entry = entry,
-                    urn = dataState.value.urn,
-                    slotDate = earliestSlotDate,
-                    appConfig = appConfigState.value
-                )
-
-                when (loadSlotResult) {
-                    is SealedResult.Success -> {
-                        dataRepository.saveAllocationIds(loadSlotResult.data)
-                        startSchedule(loadSlotResult.data)
-
-
-                        vmLog(
-                            "loadTimeSlot success",
-                            LogType.SUCCESS,
-                            metadata = mapOf(
-                                "earliestSlotDate" to earliestSlotDate,
-                                "allocationCount" to loadSlotResult.data.size.toString()
-                            )
-                        )
-                    }
-
-                    is SealedResult.Error -> {
-                        println(loadSlotResult.exception.message)
-                        vmLog(
-                            "loadTimeSlot failed",
-                            LogType.ERROR,
-                            metadata = mapOf("error" to (loadSlotResult.exception.message ?: "unknown"))
-                        )
-                    }
-                }
-
-
-                println("Earliest Slot Date received via firebase: $earliestSlotDate")
-            } catch (e: CancellationException) {
-                vmLog("loadSlotJob cancelled", LogType.DEBUG)
-                throw e
-            } finally {
-                loadSlotSlob = null
-                dataRepository.updateLoadSlotJobState(JobState.STOPPED)
-                vmLog("Load slot job state set to STOPPED", LogType.DEBUG)
+        viewModelScope.launch(Dispatchers.IO) {
+            val targetDate = resolveTargetSlotDate(
+                entry = entry,
+                selectedDate = selectedDate
+            )
+            val attemptDates = if (isCurrentCycleFinder && selectedDate.isNullOrBlank()) {
+                List(FINDER_SLOT_RETRY_COUNT) { targetDate }
+            } else {
+                listOf(targetDate)
             }
+            startLoadSlotJob(
+                sessionData = sessionData,
+                entry = entry,
+                attemptDates = attemptDates,
+                baseDateCount = 1
+            )
         }
     }
 
@@ -880,12 +1207,13 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     )
                 )
 
-                when (val scheduleResult = scheduleApi.schedule(
+                val scheduleResult = scheduleApi.schedule(
                     sessionData = sessionData,
                     entry = entry,
                     urn = urn,
                     allocationId = allocationId
-                )) {
+                )
+                when (scheduleResult) {
                     is SealedResult.Success -> {
                         completed = true
                         vmLog(

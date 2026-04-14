@@ -16,10 +16,6 @@ class DataRepository() {
         _state.update { it.copy(urn = urn) }
     }
 
-    fun saveEarliestSlotDates(earliestSlotDate: String) {
-        _state.update { it.copy(earliestSlotDate = earliestSlotDate) }
-    }
-
     fun saveAvailableDates(dates: List<String>) {
         _state.update { it.copy(availableDates = dates) }
     }

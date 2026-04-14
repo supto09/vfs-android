@@ -29,7 +29,7 @@ This file maps app actions to ViewModel handlers and API calls/endpoints.
 | `Stop` (Add Applicants) | `MainViewModel.stopAddApplicant()` | Cancels add-applicant job/retry loop | No API call |
 | `Check Slot Ava` | `MainViewModel.startCheckIsSlotAvailable()` | Loop: `calenderApi.checkIsSlotAvailable(...)` every ~3 min + jitter until earliest date found | `POST https://lift-api.vfsglobal.com/appointment/CheckIsSlotAvailable` |
 | `Stop` (Check Slot) | `MainViewModel.stopCheckIsSlotAvailable()` | Cancels check-slot job | No API call |
-| `Load Calender` | `MainViewModel.loadCalender()` | `calenderApi.loadCalender(...)` | `POST https://lift-api.vfsglobal.com/appointment/calendar` |
+| `Load Calender` | `MainViewModel.loadCalender()` | Reads earliest date from Firebase and stops check-slot if active. Finder app exits early; follower app calls `calenderApi.loadCalender(...)` to populate `availableDates` | Firebase path `z_earliest_date/{countryCode}/{missionCode}/date` + `POST https://lift-api.vfsglobal.com/appointment/calendar` (follower path) |
 | `Stop` (Load Calender) | `MainViewModel.stopLoadCalender()` | Cancels load-calender job | No API call |
 | `Load Slot` | `MainViewModel.loadTimeSlot()` | 1) read earliest date from Firebase -> 2) `slotApi.loadSlots(...)` -> 3) `startSchedule(allocationIds)` | `POST https://lift-api.vfsglobal.com/appointment/timeslot` -> then schedule endpoint below |
 | `Stop` (Load Slot) | `MainViewModel.stopLoadTimeSlot()` | Cancels load-slot job | No API call |
