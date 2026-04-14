@@ -32,12 +32,28 @@ class DataRepository() {
         _state.update { it.copy(checkSlotJobRunning = jobState) }
     }
 
+    fun updateLoginJobState(jobState: JobState) {
+        _state.update { it.copy(loginJobRunning = jobState) }
+    }
+
+    fun updateVerifyOtpJobState(jobState: JobState) {
+        _state.update { it.copy(verifyOtpJobRunning = jobState) }
+    }
+
+    fun updateOtpVerificationRequired(required: Boolean) {
+        _state.update { it.copy(otpVerificationRequired = required) }
+    }
+
     fun updateLoadApplicantsJobState(jobState: JobState) {
         _state.update { it.copy(loadApplicantsJobRunning = jobState) }
     }
 
     fun updateAddApplicantJobState(jobState: JobState) {
         _state.update { it.copy(addApplicantJobRunning = jobState) }
+    }
+
+    fun updateLoadCalenderJobState(jobState: JobState) {
+        _state.update { it.copy(loadCalenderJobRunning = jobState) }
     }
 
     fun updateLoadSlotJobState(jobState: JobState) {

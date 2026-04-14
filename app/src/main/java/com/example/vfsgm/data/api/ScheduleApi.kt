@@ -2,6 +2,8 @@ package com.example.vfsgm.data.api
 
 import com.example.vfsgm.core.ClientSourceManager
 import com.example.vfsgm.core.SealedResult
+import com.example.vfsgm.core.logging.AppLogService
+import com.example.vfsgm.core.logging.DeviceIndexContext
 import com.example.vfsgm.data.dto.Entry
 import com.example.vfsgm.data.dto.SessionData
 import com.example.vfsgm.data.network.VfsApiClient
@@ -39,9 +41,9 @@ class ScheduleApi {
     ): SealedResult<ScheduleResult> {
         val requestBodyJson = """
             {
-              "missionCode": "${entry.missionCode.id}",
-              "countryCode": "${entry.countryCode.id}",
-              "centerCode": "${entry.vacCode.id}",
+              "missionCode": "${entry.missionCode}",
+              "countryCode": "${entry.countryCode}",
+              "centerCode": "${entry.vacCode}",
               "loginUser": "${sessionData.username}",
               "urn": "$urn",
               "aurn": null,
@@ -60,6 +62,12 @@ class ScheduleApi {
             }
             """.trimIndent()
 
+        AppLogService.log(
+            deviceIndex = DeviceIndexContext.get(),
+            message = "Schedule requestBody: $requestBodyJson",
+            tag = "ScheduleApi"
+        )
+
         val requestBody = requestBodyJson.toRequestBody("application/json;charset=UTF-8".toMediaType())
 
         val request = Request.Builder().apply {
@@ -73,7 +81,7 @@ class ScheduleApi {
             addHeader("Authorize", sessionData.accessToken)
             addHeader("accept", "application/json, text/plain, */*")
             addHeader("content-type", "application/json;charset=UTF-8")
-            addHeader("route", "${entry.countryCode.id}/en/${entry.missionCode.id}")
+            addHeader("route", "${entry.countryCode}/en/${entry.missionCode}")
             addHeader("Origin", "https://visa.vfsglobal.com")
             addHeader("Referer", "https://visa.vfsglobal.com/")
             tag(String::class.java, "appointment.schedule")

@@ -32,16 +32,14 @@ class LokiFlushWorker(
                 LokiUploadResult.Success -> Unit
                 is LokiUploadResult.RetryableFailure -> {
                     println(
-                        "⚠️ Loki retryable failure code=${uploadResult.code} reason=${uploadResult.reason} " +
-                            "batchSize=${batch.size} body=${uploadResult.body ?: ""}"
+                        "Loki flush retryable failure: code=${uploadResult.code} reason=${uploadResult.reason}"
                     )
                     buffer.requeueFront(batch)
                     return Result.retry()
                 }
                 is LokiUploadResult.FatalFailure -> {
                     println(
-                        "❌ Dropping Loki batch code=${uploadResult.code} reason=${uploadResult.reason} " +
-                            "batchSize=${batch.size} body=${uploadResult.body ?: ""}"
+                        "Loki flush fatal failure: code=${uploadResult.code} reason=${uploadResult.reason}"
                     )
                 }
             }

@@ -2,6 +2,7 @@ package com.example.vfsgm.data.api
 
 import com.example.vfsgm.core.ClientSourceManager
 import com.example.vfsgm.core.logging.AppLogService
+import com.example.vfsgm.core.logging.DeviceIndexContext
 import com.example.vfsgm.core.SealedResult
 import com.example.vfsgm.data.constants.DATE_FORMAT
 import com.example.vfsgm.data.dto.AppConfig
@@ -44,10 +45,10 @@ class CalenderApi {
     ): SealedResult<String?> {
         val requestBodyJson = """
             {
-              "countryCode": "${entry.countryCode.name.lowercase()}",
-              "missionCode": "${entry.missionCode.name.lowercase()}",
-              "vacCode": "${entry.vacCode.name}",
-              "visaCategoryCode": "${entry.visaCategoryCode.name}",
+              "countryCode": "${entry.countryCode}",
+              "missionCode": "${entry.missionCode}",
+              "vacCode": "${entry.vacCode}",
+              "visaCategoryCode": "${entry.visaCategoryCode}",
               "loginUser": "${sessionData.username}",
               "roleName": "Individual",             
               "payCode": ""
@@ -57,6 +58,10 @@ class CalenderApi {
         AppLogService.log(
             appConfig.deviceIndex,
             "CheckIsSlotAvailable"
+        )
+        AppLogService.log(
+            appConfig.deviceIndex,
+            "CheckIsSlotAvailable requestBody: $requestBodyJson"
         )
 
         val mediaType = "application/json;charset=UTF-8".toMediaType()
@@ -75,7 +80,6 @@ class CalenderApi {
             addHeader("Origin", "https://visa.vfsglobal.com")
             addHeader("Referer", "https://visa.vfsglobal.com/")
         }.build()
-
 
         return try {
             client.newCall(request).await().use { res ->
@@ -126,11 +130,11 @@ class CalenderApi {
 
         val requestBodyJson = """
             {
-              "countryCode": "${entry.countryCode.name.lowercase()}",
-              "missionCode": "${entry.missionCode.name.lowercase()}",
-              "centerCode": "${entry.vacCode.name}",
+              "countryCode": "${entry.countryCode}",
+              "missionCode": "${entry.missionCode}",
+              "centerCode": "${entry.vacCode}",
               "loginUser": "${sessionData.username}",
-              "visaCategoryCode": "${entry.visaCategoryCode.name}",
+              "visaCategoryCode": "${entry.visaCategoryCode}",
               "fromDate": "$todayFormatted",
               "urn": "$urn",
               "payCode": ""
@@ -153,6 +157,11 @@ class CalenderApi {
             addHeader("Origin", "https://visa.vfsglobal.com")
             addHeader("Referer", "https://visa.vfsglobal.com/")
         }.build()
+
+        AppLogService.log(
+            DeviceIndexContext.get(),
+            "LoadCalender requestBody: $requestBodyJson"
+        )
 
 
 

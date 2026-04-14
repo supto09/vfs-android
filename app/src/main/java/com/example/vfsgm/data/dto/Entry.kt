@@ -1,17 +1,13 @@
 package com.example.vfsgm.data.dto
 
-import com.example.vfsgm.data.constants.CountryCode
 import com.example.vfsgm.data.constants.Gender
-import com.example.vfsgm.data.constants.MissionCode
 import com.example.vfsgm.data.constants.Nationality
-import com.example.vfsgm.data.constants.VisaApplicationCenterCode
-import com.example.vfsgm.data.constants.VisaCategoryCode
 
 data class Entry(
-    val countryCode: CountryCode = CountryCode.PAK, // from country
-    val missionCode: MissionCode = MissionCode.UKR, // target country
-    val vacCode: VisaApplicationCenterCode = VisaApplicationCenterCode.LHE,  // application center
-    val visaCategoryCode: VisaCategoryCode = VisaCategoryCode.IP,
+    val countryCode: String = "PAK", // from country
+    val missionCode: String = "UKR", // target country
+    val vacCode: String = "LHE",  // application center
+    val visaCategoryCode: String = "IP",
     val applicants: List<Applicant> = mutableListOf()
 )
 

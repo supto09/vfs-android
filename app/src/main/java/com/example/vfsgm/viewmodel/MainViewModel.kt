@@ -15,6 +15,7 @@ import com.example.vfsgm.data.api.ApplicantApi
 import com.example.vfsgm.data.api.AuthApi
 import com.example.vfsgm.data.api.CalenderApi
 import com.example.vfsgm.data.api.LeasedAccountApi
+import com.example.vfsgm.data.api.LoginOutcome
 import com.example.vfsgm.data.api.SlotApi
 import com.example.vfsgm.data.dto.AppConfig
 import com.example.vfsgm.data.dto.Entry
@@ -39,6 +40,12 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     private companion object {
         const val ADD_APPLICANT_MAX_ATTEMPTS = 5
         const val ADD_APPLICANT_RETRY_DELAY_MS = 10_000L
+        const val FIXED_LOGIN_OTP = "658992"
+    }
+
+    private sealed interface LoginAttemptOutcome {
+        data object Success : LoginAttemptOutcome
+        data object Failure : LoginAttemptOutcome
     }
 
     private fun vmLog(
@@ -117,6 +124,22 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     fun stopAllChildJob() {
         vmLog("Stopping child jobs", LogType.WARNING)
+        loginJob?.cancel()
+        loginJob = null
+        verifyOtpJob?.cancel()
+        verifyOtpJob = null
+        loadApplicantsJob?.cancel()
+        loadApplicantsJob = null
+        addApplicantJob?.cancel()
+        addApplicantJob = null
+        loadCalenderJob?.cancel()
+        loadCalenderJob = null
+        dataRepository.updateLoginJobState(JobState.STOPPED)
+        dataRepository.updateVerifyOtpJobState(JobState.STOPPED)
+        dataRepository.updateLoadApplicantsJobState(JobState.STOPPED)
+        dataRepository.updateAddApplicantJobState(JobState.STOPPED)
+        dataRepository.updateLoadCalenderJobState(JobState.STOPPED)
+        dataRepository.updateOtpVerificationRequired(false)
         checkSlotJob?.cancel()
         checkSlotJob = null
         loadSlotSlob?.cancel()
@@ -174,7 +197,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         vmLog("ReLogin job state set to STOPPED", LogType.DEBUG)
     }
 
-    private suspend fun attemptLoginOnce(entry: Entry): Boolean {
+    private suspend fun attemptLoginOnce(entry: Entry): LoginAttemptOutcome {
         vmLog(
             "attemptLoginOnce called",
             LogType.DEBUG,
@@ -189,7 +212,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             is SealedResult.Error -> null
         } ?: run {
             vmLog("Lease failed: no account found", LogType.ERROR, critical = true)
-            return false
+            return LoginAttemptOutcome.Failure
         }
 
         vmLog(
@@ -200,92 +223,209 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
         val cloudflareToken = TurnstileService.solveTurnstile() ?: run {
             vmLog("Cloudflare token load failed", LogType.ERROR, critical = true)
-            return false
+            return LoginAttemptOutcome.Failure
         }
         vmLog("Cloudflare token acquired", LogType.SUCCESS)
 
-        val accessToken = authApi.login(
+        val loginOutcome = authApi.login(
             username = leasedAccount.email,
             password = leasedAccount.password,
             cloudflareToken = cloudflareToken,
+            countryCode = leasedAccount.countryCode,
+            missionCode = leasedAccount.missionCode,
             appConfig = appConfigState.value
         )
 
-        if (accessToken.isNullOrEmpty()) {
-            vmLog(
-                "Login failed. Reporting block.",
-                LogType.ERROR,
-                critical = true,
-                metadata = mapOf("email" to leasedAccount.email)
-            )
-            leasedAccountApi.reportBlock(leasedAccount.email, entry = entry)
+        when (loginOutcome) {
+            is LoginOutcome.Success -> {
+                vmLog(
+                    "Saving session data after login success",
+                    LogType.SUCCESS,
+                    metadata = mapOf("email" to leasedAccount.email)
+                )
 
-            return false
+                sessionRepository.saveSessionData(
+                    SessionData(
+                        accessToken = loginOutcome.accessToken,
+                        username = leasedAccount.email
+                    )
+                )
+                return LoginAttemptOutcome.Success
+            }
+
+            is LoginOutcome.OtpRequired -> {
+                vmLog(
+                    "Login requires OTP verification; attempting auto verify",
+                    LogType.WARNING,
+                    metadata = mapOf(
+                        "contactNumber" to loginOutcome.contactNumber,
+                        "dialCode" to loginOutcome.dialCode
+                    )
+                )
+
+                dataRepository.updateVerifyOtpJobState(JobState.IN_PROGRESS)
+                return try {
+                    when (val otpOutcome = authApi.verifyOtp(
+                        username = leasedAccount.email,
+                        password = leasedAccount.password,
+                        cloudflareToken = cloudflareToken,
+                        countryCode = leasedAccount.countryCode,
+                        missionCode = leasedAccount.missionCode,
+                        otp = FIXED_LOGIN_OTP,
+                        appConfig = appConfigState.value
+                    )) {
+                        is LoginOutcome.Success -> {
+                            sessionRepository.saveSessionData(
+                                SessionData(
+                                    accessToken = otpOutcome.accessToken,
+                                    username = leasedAccount.email
+                                )
+                            )
+                            dataRepository.updateVerifyOtpJobState(JobState.COMPLETE)
+                            vmLog("Auto OTP verification succeeded", LogType.SUCCESS)
+                            LoginAttemptOutcome.Success
+                        }
+
+                        is LoginOutcome.OtpRequired -> {
+                            dataRepository.updateVerifyOtpJobState(JobState.STOPPED)
+                            vmLog("Auto OTP verification still requires OTP", LogType.ERROR, critical = true)
+                            LoginAttemptOutcome.Failure
+                        }
+
+                        is LoginOutcome.Failure -> {
+                            dataRepository.updateVerifyOtpJobState(JobState.STOPPED)
+                            vmLog(
+                                "Auto OTP verification failed",
+                                LogType.ERROR,
+                                critical = true,
+                                metadata = mapOf("reason" to otpOutcome.reason)
+                            )
+                            LoginAttemptOutcome.Failure
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    dataRepository.updateVerifyOtpJobState(JobState.STOPPED)
+                    throw e
+                } catch (e: Exception) {
+                    dataRepository.updateVerifyOtpJobState(JobState.STOPPED)
+                    vmLog(
+                        "Auto OTP verification crashed",
+                        LogType.ERROR,
+                        critical = true,
+                        metadata = mapOf("error" to (e.message ?: "unknown"))
+                    )
+                    LoginAttemptOutcome.Failure
+                }
+            }
+
+            is LoginOutcome.Failure -> {
+                vmLog(
+                    "Login failed. Reporting block.",
+                    LogType.ERROR,
+                    critical = true,
+                    metadata = mapOf(
+                        "email" to leasedAccount.email,
+                        "reason" to loginOutcome.reason
+                    )
+                )
+                leasedAccountApi.reportBlock(leasedAccount.email, entry = entry)
+                return LoginAttemptOutcome.Failure
+            }
         }
-
-
-        vmLog(
-            "Saving session data after login success",
-            LogType.SUCCESS,
-            metadata = mapOf("email" to leasedAccount.email)
-        )
-
-        sessionRepository.saveSessionData(
-            SessionData(
-                accessToken = accessToken, username = leasedAccount.email
-            )
-        )
-        return true
     }
 
     fun login(onLoginComplete: (() -> Unit)? = null) {
-        viewModelScope.launch(Dispatchers.IO) {
+        if (loginJob?.isActive == true) {
+            vmLog("login ignored because login job is already active", LogType.WARNING)
+            return
+        }
+        if (verifyOtpJob?.isActive == true) {
+            vmLog("login ignored because verifyOtp job is active", LogType.WARNING)
+            return
+        }
+
+        dataRepository.updateOtpVerificationRequired(false)
+        dataRepository.updateLoginJobState(JobState.IN_PROGRESS)
+
+        loginJob = viewModelScope.launch(Dispatchers.IO) {
             val entry = entryState.value
 
             val maxAttempts = 5
             var delayMs = 1000L
             vmLog("Login flow started", LogType.INFO, metadata = mapOf("maxAttempts" to maxAttempts.toString()))
 
-            repeat(maxAttempts) { attemptIndex ->
-                if (!isActive) return@launch
+            try {
+                repeat(maxAttempts) { attemptIndex ->
+                    if (!isActive) return@launch
 
-                vmLog("Login attempt started", LogType.DEBUG, metadata = mapOf("attempt" to (attemptIndex + 1).toString()))
-                val ok = try {
-                    attemptLoginOnce(entry)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    vmLog(
-                        "Login attempt crashed",
-                        LogType.ERROR,
-                        metadata = mapOf("attempt" to (attemptIndex + 1).toString(), "error" to (e.message ?: "unknown"))
-                    )
-                    false
+                    vmLog("Login attempt started", LogType.DEBUG, metadata = mapOf("attempt" to (attemptIndex + 1).toString()))
+                    val outcome = try {
+                        attemptLoginOnce(entry)
+                    } catch (e: CancellationException) {
+                        vmLog("login cancelled during attempt", LogType.DEBUG)
+                        throw e
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        vmLog(
+                            "Login attempt crashed",
+                            LogType.ERROR,
+                            metadata = mapOf("attempt" to (attemptIndex + 1).toString(), "error" to (e.message ?: "unknown"))
+                        )
+                        LoginAttemptOutcome.Failure
+                    }
+
+                    when (outcome) {
+                        LoginAttemptOutcome.Success -> {
+                            dataRepository.updateLoginJobState(JobState.COMPLETE)
+                            dataRepository.updateOtpVerificationRequired(false)
+                            vmLog("Login attempt succeeded", LogType.SUCCESS, metadata = mapOf("attempt" to (attemptIndex + 1).toString()))
+                            delay(1000L)
+                            withContext(Dispatchers.Main) { onLoginComplete?.invoke() }
+                            return@launch
+                        }
+
+                        LoginAttemptOutcome.Failure -> {
+                            val isLast = attemptIndex == maxAttempts - 1
+                            if (!isLast) {
+                                vmLog("Login attempt failed, backing off", LogType.WARNING, metadata = mapOf("nextDelayMs" to delayMs.toString()))
+                                delay(delayMs)
+                                delayMs = (delayMs * 2).coerceAtMost(15_000L)
+                            }
+                        }
+
+                    }
                 }
 
-                if (ok) {
-                    vmLog("Login attempt succeeded", LogType.SUCCESS, metadata = mapOf("attempt" to (attemptIndex + 1).toString()))
-                    delay(1000L)
-                    withContext(Dispatchers.Main) { onLoginComplete?.invoke() }
-                    return@launch
-                }
-
-                val isLast = attemptIndex == maxAttempts - 1
-                if (!isLast) {
-                    // simple backoff
-                    vmLog("Login attempt failed, backing off", LogType.WARNING, metadata = mapOf("nextDelayMs" to delayMs.toString()))
-                    delay(delayMs)
-                    delayMs = (delayMs * 2).coerceAtMost(15_000L)
+                println("Login failed after $maxAttempts attempts.")
+                vmLog("Login failed after max attempts", LogType.ERROR, critical = true)
+                dataRepository.updateLoginJobState(JobState.STOPPED)
+            } catch (e: CancellationException) {
+                vmLog("Login flow cancelled", LogType.DEBUG)
+                dataRepository.updateLoginJobState(JobState.STOPPED)
+                throw e
+            } finally {
+                loginJob = null
+                if (dataState.value.loginJobRunning == JobState.IN_PROGRESS) {
+                    dataRepository.updateLoginJobState(JobState.STOPPED)
                 }
             }
-
-            println("Login failed after $maxAttempts attempts.")
-            // TODO sent a critical alert that a device failed to login
-            vmLog("Login failed after max attempts", LogType.ERROR, critical = true)
         }
     }
 
+    fun stopLoginFlow() {
+        vmLog("stopLoginFlow called", LogType.WARNING)
+        loginJob?.cancel()
+        loginJob = null
+        verifyOtpJob?.cancel()
+        verifyOtpJob = null
+        dataRepository.updateLoginJobState(JobState.STOPPED)
+        dataRepository.updateVerifyOtpJobState(JobState.STOPPED)
+        dataRepository.updateOtpVerificationRequired(false)
+        vmLog("login and verifyOtp jobs stopped", LogType.DEBUG)
+    }
+
     fun loadApplicants() {
-        if (dataState.value.loadApplicantsJobRunning == JobState.IN_PROGRESS) {
+        if (loadApplicantsJob?.isActive == true || dataState.value.loadApplicantsJobRunning == JobState.IN_PROGRESS) {
             vmLog("loadApplicants ignored because job is already active", LogType.WARNING)
             return
         }
@@ -297,7 +437,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         val entry = entryState.value
         vmLog("Loading applicants", LogType.DEBUG)
 
-        viewModelScope.launch(Dispatchers.IO) {
+        loadApplicantsJob = viewModelScope.launch(Dispatchers.IO) {
             dataRepository.updateLoadApplicantsJobState(JobState.IN_PROGRESS)
             vmLog("Load applicants job state set to IN_PROGRESS", LogType.DEBUG)
 
@@ -308,6 +448,9 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 )
                 completed = true
                 vmLog("loadApplicants completed", LogType.SUCCESS)
+            } catch (e: CancellationException) {
+                vmLog("loadApplicants job cancelled", LogType.DEBUG)
+                throw e
             } catch (e: Exception) {
                 vmLog(
                     "loadApplicants failed",
@@ -317,6 +460,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             } finally {
                 val finalState = if (completed) JobState.COMPLETE else JobState.STOPPED
                 dataRepository.updateLoadApplicantsJobState(finalState)
+                loadApplicantsJob = null
                 vmLog(
                     "Load applicants job state updated",
                     LogType.DEBUG,
@@ -431,12 +575,43 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun addApplicantManual() {
-        viewModelScope.launch(Dispatchers.IO) {
-            addApplicant()
+        if (addApplicantJob?.isActive == true || dataState.value.addApplicantJobRunning == JobState.IN_PROGRESS) {
+            vmLog("addApplicantManual ignored because job is already active", LogType.WARNING)
+            return
+        }
+        addApplicantJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                addApplicant()
+            } catch (e: CancellationException) {
+                vmLog("addApplicant manual job cancelled", LogType.DEBUG)
+                throw e
+            } finally {
+                addApplicantJob = null
+            }
         }
     }
 
+    fun stopLoadApplicants() {
+        vmLog("stopLoadApplicants called", LogType.WARNING)
+        loadApplicantsJob?.cancel()
+        loadApplicantsJob = null
+        dataRepository.updateLoadApplicantsJobState(JobState.STOPPED)
+        vmLog("Load applicants job state set to STOPPED", LogType.DEBUG)
+    }
+
+    fun stopAddApplicant() {
+        vmLog("stopAddApplicant called", LogType.WARNING)
+        addApplicantJob?.cancel()
+        addApplicantJob = null
+        dataRepository.updateAddApplicantJobState(JobState.STOPPED)
+        vmLog("Add applicant job state set to STOPPED", LogType.DEBUG)
+    }
+
     fun loadCalender() {
+        if (loadCalenderJob?.isActive == true || dataState.value.loadCalenderJobRunning == JobState.IN_PROGRESS) {
+            vmLog("loadCalender ignored because job is already active", LogType.WARNING)
+            return
+        }
         val sessionData = sessionState.value ?: run {
             vmLog("loadCalender skipped: session is null", LogType.WARNING)
             return
@@ -444,30 +619,49 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         val entry = entryState.value
         vmLog("loadCalender started", LogType.DEBUG, metadata = mapOf("urn" to dataState.value.urn))
 
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = calenderApi.loadCalender(
-                sessionData = sessionData, entry = entry, urn = dataState.value.urn
-            )
-
-            when (result) {
-                is SealedResult.Success -> {
-                    dataRepository.saveAvailableDates(dates = result.data)
-                    vmLog(
-                        "loadCalender success",
-                        LogType.SUCCESS,
-                        metadata = mapOf("dateCount" to result.data.size.toString())
-                    )
+        loadCalenderJob = viewModelScope.launch(Dispatchers.IO) {
+            dataRepository.updateLoadCalenderJobState(JobState.IN_PROGRESS)
+            var completed = false
+            try {
+                val result = calenderApi.loadCalender(
+                    sessionData = sessionData, entry = entry, urn = dataState.value.urn
+                )
+                when (result) {
+                    is SealedResult.Success -> {
+                        dataRepository.saveAvailableDates(dates = result.data)
+                        completed = true
+                        vmLog(
+                            "loadCalender success",
+                            LogType.SUCCESS,
+                            metadata = mapOf("dateCount" to result.data.size.toString())
+                        )
+                    }
+                    is SealedResult.Error -> {
+                        println(result.exception.message)
+                        vmLog(
+                            "loadCalender failed",
+                            LogType.ERROR,
+                            metadata = mapOf("error" to (result.exception.message ?: "unknown"))
+                        )
+                    }
                 }
-                is SealedResult.Error -> {
-                    println(result.exception.message)
-                    vmLog(
-                        "loadCalender failed",
-                        LogType.ERROR,
-                        metadata = mapOf("error" to (result.exception.message ?: "unknown"))
-                    )
-                }
+            } catch (e: CancellationException) {
+                vmLog("loadCalender job cancelled", LogType.DEBUG)
+                throw e
+            } finally {
+                val finalState = if (completed) JobState.COMPLETE else JobState.STOPPED
+                dataRepository.updateLoadCalenderJobState(finalState)
+                loadCalenderJob = null
             }
         }
+    }
+
+    fun stopLoadCalender() {
+        vmLog("stopLoadCalender called", LogType.WARNING)
+        loadCalenderJob?.cancel()
+        loadCalenderJob = null
+        dataRepository.updateLoadCalenderJobState(JobState.STOPPED)
+        vmLog("Load calender job state set to STOPPED", LogType.DEBUG)
     }
 
     fun startCheckIsSlotAvailable() {

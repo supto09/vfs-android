@@ -1,11 +1,9 @@
 package com.example.vfsgm.data.api
 
-import com.example.vfsgm.data.constants.CountryCode
+import com.example.vfsgm.core.logging.AppLogService
+import com.example.vfsgm.core.logging.DeviceIndexContext
 import com.example.vfsgm.data.constants.Gender
-import com.example.vfsgm.data.constants.MissionCode
 import com.example.vfsgm.data.constants.Nationality
-import com.example.vfsgm.data.constants.VisaApplicationCenterCode
-import com.example.vfsgm.data.constants.VisaCategoryCode
 import com.example.vfsgm.data.dto.Applicant
 import com.example.vfsgm.data.dto.Entry
 import com.example.vfsgm.data.network.MyApiClient
@@ -30,6 +28,12 @@ class EntryApi {
     }
 
     suspend fun getEntry(entryIndex: Int): Entry {
+        AppLogService.log(
+            deviceIndex = DeviceIndexContext.get(),
+            message = "GetEntry request: GET /v1/entries/$entryIndex body=<none>",
+            tag = "EntryApi"
+        )
+
         val request = Request.Builder().apply {
             url("https://vfsapi.ashulo.org/v1/entries/$entryIndex")
             get()
@@ -52,10 +56,10 @@ class EntryApi {
     }
     private fun fallbackStaticEntry(): Entry {
         return Entry(
-            countryCode = CountryCode.PAK,
-            missionCode = MissionCode.UKR,
-            vacCode = VisaApplicationCenterCode.LHE,
-            visaCategoryCode = VisaCategoryCode.IP,
+            countryCode = "PAK",
+            missionCode = "UKR",
+            vacCode = "LHE",
+            visaCategoryCode = "IP",
             applicants = listOf(
                 Applicant(
                     firstName = "XI",
@@ -75,33 +79,13 @@ class EntryApi {
 }
 
 private fun EntryApiResponse.toEntry(): Entry {
-    val mappedCountryCode = countryCode?.let { raw ->
-        CountryCode.fromId(raw.lowercase(Locale.US))
-            ?: CountryCode.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
-    } ?: CountryCode.PAK
-
-    val mappedMissionCode = missionCode?.let { raw ->
-        MissionCode.fromId(raw.lowercase(Locale.US))
-            ?: MissionCode.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
-    } ?: MissionCode.UKR
-
-    val mappedVacCode = vacCode?.let { raw ->
-        VisaApplicationCenterCode.fromId(raw.uppercase(Locale.US))
-            ?: VisaApplicationCenterCode.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
-    } ?: VisaApplicationCenterCode.LHE
-
-    val mappedVisaCategoryCode = visaCategoryCode?.let { raw ->
-        VisaCategoryCode.fromId(raw.lowercase(Locale.US))
-            ?: VisaCategoryCode.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
-    } ?: VisaCategoryCode.IP
-
     val mappedApplicants = applicants.orEmpty().map { it.toApplicant() }
 
     return Entry(
-        countryCode = mappedCountryCode,
-        missionCode = mappedMissionCode,
-        vacCode = mappedVacCode,
-        visaCategoryCode = mappedVisaCategoryCode,
+        countryCode = countryCode.orEmpty(),
+        missionCode = missionCode.orEmpty(),
+        vacCode = vacCode.orEmpty(),
+        visaCategoryCode = visaCategoryCode.orEmpty(),
         applicants = mappedApplicants
     )
 }

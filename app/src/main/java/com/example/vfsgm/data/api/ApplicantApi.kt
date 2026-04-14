@@ -89,11 +89,11 @@ class ApplicantApi {
     ): String {
         val requestBodyJson = """
         {
-          "countryCode": "${entry.countryCode.name.lowercase()}",
-          "missionCode": "${entry.missionCode.name.lowercase()}",
-          "centerCode": "${entry.vacCode.name}",
+          "countryCode": "${entry.countryCode}",
+          "missionCode": "${entry.missionCode}",
+          "centerCode": "${entry.vacCode}",
           "loginUser": "${sessionData.username}",
-          "visaCategoryCode": "${entry.visaCategoryCode.name}",
+          "visaCategoryCode": "${entry.visaCategoryCode}",
           "isEdit": false,
           "feeEntryTypeCode": null,
           "feeExemptionTypeCode": null,

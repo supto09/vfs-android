@@ -38,10 +38,7 @@ class LokiClient(
             okHttpClient.newCall(request).execute().use { response ->
                 val responseBody = response.body?.string()?.take(1000)
                 return@withContext when {
-                    response.isSuccessful -> {
-                        println("✅ Loki upload success: status=${response.code}, events=${events.size}")
-                        LokiUploadResult.Success
-                    }
+                    response.isSuccessful -> LokiUploadResult.Success
 
                     response.code == 429 || response.code >= 500 -> LokiUploadResult.RetryableFailure(
                         code = response.code,

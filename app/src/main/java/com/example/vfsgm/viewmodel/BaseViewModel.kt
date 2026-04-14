@@ -40,6 +40,11 @@ open class BaseViewModel(application: Application) : AndroidViewModel(applicatio
 
     // jobs
     var reLoginJob: Job? = null
+    var loginJob: Job? = null
+    var verifyOtpJob: Job? = null
+    var loadApplicantsJob: Job? = null
+    var addApplicantJob: Job? = null
+    var loadCalenderJob: Job? = null
     var checkSlotJob: Job? = null
     var loadSlotSlob: Job? = null
 }

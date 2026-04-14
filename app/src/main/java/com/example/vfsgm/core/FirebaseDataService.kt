@@ -1,7 +1,5 @@
 package com.example.vfsgm.core
 
-import com.example.vfsgm.data.constants.CountryCode
-import com.example.vfsgm.data.constants.MissionCode
 import com.example.vfsgm.data.dto.Entry
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError

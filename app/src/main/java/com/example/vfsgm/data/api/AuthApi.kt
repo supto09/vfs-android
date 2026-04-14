@@ -17,6 +17,9 @@ import java.io.IOException
 import kotlin.getValue
 
 class AuthApi {
+    private companion object {
+        const val LOGIN_URL = "https://lift-api.vfsglobal.com/user/login"
+    }
 
     private val client by lazy(LazyThreadSafetyMode.PUBLICATION) {
         VfsApiClient().client
@@ -30,8 +33,13 @@ class AuthApi {
 
 
     suspend fun login(
-        username: String, password: String, cloudflareToken: String, appConfig: AppConfig
-    ): String? {
+        username: String,
+        password: String,
+        cloudflareToken: String,
+        countryCode: String,
+        missionCode: String,
+        appConfig: AppConfig
+    ): LoginOutcome {
         val encryptedPassword = EncryptionManager.encryptWithRsaOaepSha256(password)
 
         AppLogService.log(
@@ -41,24 +49,92 @@ class AuthApi {
             tag = "AuthApi",
             metadata = mapOf(
                 "username" to username,
-                "missionCode" to "ukr",
-                "countryCode" to "pak"
+                "missionCode" to missionCode,
+                "countryCode" to countryCode
             )
         )
 
+        AppLogService.log(
+            appConfig.deviceIndex,
+            "Login request body: username=$username, missioncode=$missionCode, countrycode=$countryCode, languageCode=en-US, captcha_version=cloudflare-v1, password=<redacted>, captcha_api_key=<redacted>",
+            LogType.DEBUG,
+            tag = "AuthApi"
+        )
 
+        return executeLoginRequest(
+            username = username,
+            encryptedPassword = encryptedPassword,
+            cloudflareToken = cloudflareToken,
+            countryCode = countryCode,
+            missionCode = missionCode,
+            appConfig = appConfig,
+            otp = null,
+            logPrefix = "Login"
+        )
+    }
+
+    suspend fun verifyOtp(
+        username: String,
+        password: String,
+        cloudflareToken: String,
+        countryCode: String,
+        missionCode: String,
+        otp: String,
+        appConfig: AppConfig
+    ): LoginOutcome {
+        val encryptedPassword = EncryptionManager.encryptWithRsaOaepSha256(password)
+        AppLogService.log(
+            appConfig.deviceIndex,
+            "Verify OTP api called",
+            LogType.INFO,
+            tag = "AuthApi",
+            metadata = mapOf(
+                "username" to username,
+                "missionCode" to missionCode,
+                "countryCode" to countryCode
+            )
+        )
+        AppLogService.log(
+            appConfig.deviceIndex,
+            "Verify OTP request body: username=$username, missioncode=$missionCode, countrycode=$countryCode, languageCode=en-US, captcha_version=cloudflare-v1, password=<redacted>, captcha_api_key=<redacted>, otp=<redacted>",
+            LogType.DEBUG,
+            tag = "AuthApi"
+        )
+        return executeLoginRequest(
+            username = username,
+            encryptedPassword = encryptedPassword,
+            cloudflareToken = cloudflareToken,
+            countryCode = countryCode,
+            missionCode = missionCode,
+            appConfig = appConfig,
+            otp = otp,
+            logPrefix = "Verify OTP"
+        )
+    }
+
+    private suspend fun executeLoginRequest(
+        username: String,
+        encryptedPassword: String,
+        cloudflareToken: String,
+        countryCode: String,
+        missionCode: String,
+        appConfig: AppConfig,
+        otp: String?,
+        logPrefix: String
+    ): LoginOutcome {
         val formBody = FormBody.Builder().apply {
             add("username", username)
             add("password", encryptedPassword)
-            add("missioncode", "ukr")
-            add("countrycode", "pak")
+            add("missioncode", missionCode)
+            add("countrycode", countryCode)
             add("languageCode", "en-US")
             add("captcha_version", "cloudflare-v1")
             add("captcha_api_key", cloudflareToken)
+            if (!otp.isNullOrBlank()) add("otp", otp)
         }.build()
 
         val request = Request.Builder().apply {
-            url("https://lift-api.vfsglobal.com/user/login")
+            url(LOGIN_URL)
             post(formBody)
             addHeader(
                 "clientsource", ClientSourceManager.getClientSource(
@@ -76,7 +152,7 @@ class AuthApi {
                 val bodyStr = res.body?.string().orEmpty()
                 AppLogService.log(
                     appConfig.deviceIndex,
-                    "Login response received",
+                    "$logPrefix response received",
                     if (res.isSuccessful) LogType.SUCCESS else LogType.WARNING,
                     tag = "AuthApi",
                     metadata = mapOf("statusCode" to res.code.toString())
@@ -87,124 +163,155 @@ class AuthApi {
                 val loginResponse = loginResponseAdapter.fromJson(bodyStr)
                     ?: throw IOException("Failed to parse LoginResponse. Body=$bodyStr")
 
-                return loginResponse.accessToken
+                if (loginResponse.enableOTPAuthentication == true && loginResponse.accessToken.isNullOrBlank()) {
+                    AppLogService.log(
+                        appConfig.deviceIndex,
+                        "Login requires OTP verification",
+                        LogType.WARNING,
+                        tag = "AuthApi",
+                        metadata = mapOf(
+                            "contactNumber" to (loginResponse.contactNumber ?: ""),
+                            "dialCode" to (loginResponse.dialCode ?: "")
+                        )
+                    )
+                    return LoginOutcome.OtpRequired(
+                        dialCode = loginResponse.dialCode.orEmpty(),
+                        contactNumber = loginResponse.contactNumber.orEmpty()
+                    )
+                }
+
+                val accessToken = loginResponse.accessToken
+                if (!accessToken.isNullOrBlank()) {
+                    return LoginOutcome.Success(accessToken)
+                }
+
+                return LoginOutcome.Failure("Login response did not contain access token")
             }
         } catch (error: Exception) {
             error.printStackTrace()
             AppLogService.log(
                 appConfig.deviceIndex,
-                "Login request failed",
+                "$logPrefix request failed",
                 LogType.ERROR,
                 tag = "AuthApi",
                 metadata = mapOf("error" to (error.message ?: "unknown")),
                 critical = true
             )
         }
-        return null
+        return LoginOutcome.Failure("$logPrefix request failed")
     }
+}
+
+sealed interface LoginOutcome {
+    data class Success(val accessToken: String) : LoginOutcome
+    data class OtpRequired(
+        val dialCode: String,
+        val contactNumber: String
+    ) : LoginOutcome
+    data class Failure(val reason: String) : LoginOutcome
 }
 
 
 @JsonClass(generateAdapter = true)
 data class LoginResponse(
     @Json(name = "accessToken")
-    val accessToken: String,
+    val accessToken: String?,
 
     @Json(name = "isAuthenticated")
-    val isAuthenticated: Boolean,
+    val isAuthenticated: Boolean?,
 
     @Json(name = "nearestVACCountryCode")
     val nearestVACCountryCode: String?,
 
     @Json(name = "FailedAttemptCount")
-    val failedAttemptCount: Int,
+    val failedAttemptCount: Int?,
 
     @Json(name = "isAppointmentBooked")
-    val isAppointmentBooked: Boolean,
+    val isAppointmentBooked: Boolean?,
 
     @Json(name = "isLastTransactionPending")
-    val isLastTransactionPending: Boolean,
+    val isLastTransactionPending: Boolean?,
 
     @Json(name = "isAppointmentExpired")
-    val isAppointmentExpired: Boolean,
+    val isAppointmentExpired: Boolean?,
 
     @Json(name = "isLimitedDashboard")
-    val isLimitedDashboard: Boolean,
+    val isLimitedDashboard: Boolean?,
 
     @Json(name = "isROCompleted")
-    val isROCompleted: Boolean,
+    val isROCompleted: Boolean?,
 
     @Json(name = "isSOCompleted")
-    val isSOCompleted: Boolean,
+    val isSOCompleted: Boolean?,
 
     @Json(name = "roleName")
-    val roleName: String,
+    val roleName: String?,
 
     @Json(name = "isUkraineScheme")
-    val isUkraineScheme: Boolean,
+    val isUkraineScheme: Boolean?,
 
     @Json(name = "isUkraineSchemeDocumentUpload")
-    val isUkraineSchemeDocumentUpload: Boolean,
+    val isUkraineSchemeDocumentUpload: Boolean?,
 
     @Json(name = "loginUser")
-    val loginUser: String,
+    val loginUser: String?,
 
     @Json(name = "dialCode")
-    val dialCode: String,
+    val dialCode: String?,
 
     @Json(name = "contactNumber")
-    val contactNumber: String,
+    val contactNumber: String?,
 
     @Json(name = "remainingCount")
-    val remainingCount: Int,
+    val remainingCount: Int?,
 
     @Json(name = "accountLockHours")
-    val accountLockHours: Int,
+    val accountLockHours: Int?,
 
     @Json(name = "enableOTPAuthentication")
-    val enableOTPAuthentication: Boolean,
+    val enableOTPAuthentication: Boolean?,
 
     @Json(name = "isNewUser")
-    val isNewUser: Boolean,
+    val isNewUser: Boolean?,
 
     @Json(name = "taResetPWDToken")
     val taResetPWDToken: String?,
 
     @Json(name = "firstName")
-    val firstName: String,
+    val firstName: String?,
 
     @Json(name = "lastName")
-    val lastName: String,
+    val lastName: String?,
 
     @Json(name = "dateOfBirth")
-    val dateOfBirth: String,
+    val dateOfBirth: String?,
 
     @Json(name = "isPasswordExpiryMessage")
-    val isPasswordExpiryMessage: Boolean,
+    val isPasswordExpiryMessage: Boolean?,
 
     @Json(name = "PasswordExpirydays")
-    val passwordExpiryDays: Int,
+    val passwordExpiryDays: Int?,
 
     @Json(name = "passportNumber")
     val passportNumber: String?,
 
     @Json(name = "isSpecialUser")
-    val isSpecialUser: Boolean,
+    val isSpecialUser: Boolean?,
 
     @Json(name = "maximumlimit")
-    val maximumLimit: Int,
+    val maximumLimit: Int?,
 
     @Json(name = "isSuspendedTA")
-    val isSuspendedTA: Boolean,
+    val isSuspendedTA: Boolean?,
 
     @Json(name = "showPasswordExpiryMsgTA")
-    val showPasswordExpiryMsgTA: Boolean,
+    val showPasswordExpiryMsgTA: Boolean?,
 
     @Json(name = "passwordExpiryDaysLeftTA")
-    val passwordExpiryDaysLeftTA: Int,
+    val passwordExpiryDaysLeftTA: Int?,
 
     @Json(name = "isEmbassyUser")
-    val isEmbassyUser: Boolean,
+    val isEmbassyUser: Boolean?,
 
     @Json(name = "error")
     val error: Any?

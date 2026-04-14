@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -49,6 +48,7 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
     val sessionState by viewModel.sessionState.collectAsState()
     val dataState by viewModel.dataState.collectAsState()
     val appConfigState by viewModel.appConfigState.collectAsState()
+    val entryState by viewModel.entryState.collectAsState()
 
     Box(
         modifier = Modifier
@@ -97,6 +97,7 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
         ) {
             SystemControlPanel(
                 appConfig = appConfigState,
+                entry = entryState,
                 dataState = dataState,
                 onAction = { systemControlAction ->
                     when (systemControlAction) {
@@ -110,11 +111,6 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
                 }
             )
 
-            Text(
-                text = appConfigState.toString(),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.94f),
-                style = MaterialTheme.typography.bodyLarge
-            )
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -136,7 +132,9 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
             ) { accessToken ->
                 when (accessToken == null) {
                     true -> AuthControlPanel(
-                        onLoginClick = viewModel::login
+                        dataState = dataState,
+                        onLoginClick = viewModel::login,
+                        onStopClick = viewModel::stopLoginFlow
                     )
 
                     false -> AppControlPanel(
@@ -144,13 +142,16 @@ fun AppScreen(viewModel: MainViewModel = viewModel()) {
                         onAction = { action ->
                             when (action) {
                                 AppControlAction.LoadApplicants -> viewModel.loadApplicants()
+                                AppControlAction.StopLoadApplicants -> viewModel.stopLoadApplicants()
                                 AppControlAction.AddApplicants -> viewModel.addApplicantManual()
-                                AppControlAction.LoadCalendar -> viewModel.loadCalender()
-                                AppControlAction.Logout -> viewModel.logout()
+                                AppControlAction.StopAddApplicants -> viewModel.stopAddApplicant()
                                 AppControlAction.StartCheckIsSlotAvailable -> viewModel.startCheckIsSlotAvailable()
                                 AppControlAction.StopCheckIsSlotAvailable -> viewModel.stopCheckIsSlotAvailable()
+                                AppControlAction.LoadCalendar -> viewModel.loadCalender()
+                                AppControlAction.StopLoadCalender -> viewModel.stopLoadCalender()
                                 AppControlAction.LoadSlot -> viewModel.loadTimeSlot()
                                 AppControlAction.StopLoadSlot -> viewModel.stopLoadTimeSlot()
+                                AppControlAction.Logout -> viewModel.logout()
                             }
                         }
                     )

@@ -29,11 +29,12 @@ class LeasedAccountApi {
     }
 
     suspend fun leaseAccount(entry: Entry): SealedResult<LeasedAccount> {
+        val leaseOwner = "worker-${DeviceIndexContext.get()}"
         val requestBodyJson = """
             {
-              "leaseOwner": "device-1",
-              "countryCode": "${entry.countryCode.id}",
-              "missionCode": "${entry.missionCode.id}"
+              "leaseOwner": "$leaseOwner",
+              "countryCode": "${entry.countryCode}",
+              "missionCode": "${entry.missionCode}"
             }
             """.trimIndent()
 
@@ -43,14 +44,20 @@ class LeasedAccountApi {
             logType = LogType.INFO,
             tag = "LeasedAccountApi",
             metadata = mapOf(
-                "countryCode" to entry.countryCode.id,
-                "missionCode" to entry.missionCode.id
+                "countryCode" to entry.countryCode,
+                "missionCode" to entry.missionCode,
+                "leaseOwner" to leaseOwner
             )
         )
 
         val mediaType = "application/json".toMediaType()
         val requestBody = requestBodyJson.toRequestBody(mediaType)
 
+        AppLogService.log(
+            deviceIndex = DeviceIndexContext.get(),
+            message = "Lease account requestBody: $requestBodyJson",
+            tag = "LeasedAccountApi"
+        )
 
         val request = Request.Builder().apply {
             url("https://vfsapi.ashulo.org/accounts/lease")
@@ -76,8 +83,13 @@ class LeasedAccountApi {
 
                 SealedResult.Success(
                     LeasedAccount(
+                        id = leaseAccountResponse.id,
                         email = leaseAccountResponse.email,
-                        password = leaseAccountResponse.password
+                        password = leaseAccountResponse.password,
+                        countryCode = leaseAccountResponse.countryCode,
+                        missionCode = leaseAccountResponse.missionCode,
+                        dialCode = leaseAccountResponse.dialCode,
+                        phoneNumber = leaseAccountResponse.phoneNumber
                     )
                 )
             }
@@ -100,8 +112,8 @@ class LeasedAccountApi {
         val requestBodyJson = """
             {
               "email": "$email",
-              "countryCode": "${entry.countryCode.id}",
-              "missionCode": "${entry.missionCode.id}"
+              "countryCode": "${entry.countryCode}",
+              "missionCode": "${entry.missionCode}"
             }
             """.trimIndent()
 
@@ -112,14 +124,19 @@ class LeasedAccountApi {
             tag = "LeasedAccountApi",
             metadata = mapOf(
                 "email" to email,
-                "countryCode" to entry.countryCode.id,
-                "missionCode" to entry.missionCode.id
+                "countryCode" to entry.countryCode,
+                "missionCode" to entry.missionCode
             )
         )
 
         val mediaType = "application/json".toMediaType()
         val requestBody = requestBodyJson.toRequestBody(mediaType)
 
+        AppLogService.log(
+            deviceIndex = DeviceIndexContext.get(),
+            message = "Report blocked requestBody: $requestBodyJson",
+            tag = "LeasedAccountApi"
+        )
 
         val request = Request.Builder().apply {
             url("https://vfsapi.ashulo.org/accounts/reportBlocked")
@@ -172,4 +189,10 @@ data class LeaseAccountResponse(
 
     @Json(name = "missionCode")
     val missionCode: String,
+
+    @Json(name = "dialCode")
+    val dialCode: String,
+
+    @Json(name = "phoneNumber")
+    val phoneNumber: String,
 )

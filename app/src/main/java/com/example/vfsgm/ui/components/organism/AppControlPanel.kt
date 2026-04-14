@@ -19,29 +19,37 @@ fun AppControlPanel(
     onAction: (AppControlAction) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        MySolidButton(
-            onClick = { onAction(AppControlAction.LoadApplicants) },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = dataState.loadApplicantsJobRunning != JobState.IN_PROGRESS
-        ) {
-            Text("Load Applicants")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MySolidButton(
+                onClick = { onAction(AppControlAction.LoadApplicants) },
+                modifier = Modifier.weight(2f),
+                enabled = dataState.loadApplicantsJobRunning != JobState.IN_PROGRESS
+            ) {
+                Text("Load Applicants")
+            }
+            MySolidButton(
+                onClick = { onAction(AppControlAction.StopLoadApplicants) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Stop")
+            }
         }
 
-        MySolidButton(
-            onClick = { onAction(AppControlAction.AddApplicants) },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = dataState.addApplicantJobRunning != JobState.IN_PROGRESS
-        ) {
-            Text("Add Applicants")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MySolidButton(
+                onClick = { onAction(AppControlAction.AddApplicants) },
+                modifier = Modifier.weight(2f),
+                enabled = dataState.addApplicantJobRunning != JobState.IN_PROGRESS
+            ) {
+                Text("Add Applicants")
+            }
+            MySolidButton(
+                onClick = { onAction(AppControlAction.StopAddApplicants) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Stop")
+            }
         }
-
-        MySolidButton(
-            onClick = { onAction(AppControlAction.LoadCalendar) },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Load Calender")
-        }
-
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MySolidButton(
@@ -49,11 +57,27 @@ fun AppControlPanel(
                 modifier = Modifier.weight(2f),
                 enabled = dataState.checkSlotJobRunning !== JobState.IN_PROGRESS
             ) {
-                Text("Check Slot")
+                Text("Check Slot Ava")
             }
 
             MySolidButton(
                 onClick = { onAction(AppControlAction.StopCheckIsSlotAvailable) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Stop")
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MySolidButton(
+                onClick = { onAction(AppControlAction.LoadCalendar) },
+                modifier = Modifier.weight(2f),
+                enabled = dataState.loadCalenderJobRunning != JobState.IN_PROGRESS
+            ) {
+                Text("Load Calender")
+            }
+            MySolidButton(
+                onClick = { onAction(AppControlAction.StopLoadCalender) },
                 modifier = Modifier.weight(1f),
             ) {
                 Text("Stop")
@@ -99,11 +123,14 @@ fun AppControlPanel(
 
 sealed interface AppControlAction {
     data object LoadApplicants : AppControlAction
+    data object StopLoadApplicants : AppControlAction
     data object AddApplicants : AppControlAction
-    data object LoadCalendar : AppControlAction
-    data object Logout : AppControlAction
+    data object StopAddApplicants : AppControlAction
     data object StartCheckIsSlotAvailable : AppControlAction
     data object StopCheckIsSlotAvailable : AppControlAction
+    data object LoadCalendar : AppControlAction
+    data object StopLoadCalender : AppControlAction
     data object LoadSlot : AppControlAction
     data object StopLoadSlot : AppControlAction
+    data object Logout : AppControlAction
 }
