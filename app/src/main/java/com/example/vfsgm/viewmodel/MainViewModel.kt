@@ -459,11 +459,20 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             )
         }
 
+        vmLog(
+            "Captcha token solve started",
+            LogType.INFO,
+            metadata = mapOf("phase" to "login")
+        )
         val cloudflareToken = TurnstileService.solveTurnstile() ?: run {
             vmLog("Cloudflare token load failed", LogType.ERROR, critical = true)
             return LoginAttemptOutcome.Failure
         }
-        vmLog("Cloudflare token acquired", LogType.SUCCESS)
+        vmLog(
+            "Captcha token solve finished",
+            LogType.SUCCESS,
+            metadata = mapOf("phase" to "login")
+        )
 
         val loginOutcome = authApi.login(
             username = leasedAccount.email,
@@ -514,6 +523,26 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     }
 
                     vmLog(
+                        "Captcha token solve started",
+                        LogType.INFO,
+                        metadata = mapOf("phase" to "verify_otp")
+                    )
+                    val verifyOtpCaptchaToken = TurnstileService.solveTurnstile() ?: run {
+                        vmLog(
+                            "Auto OTP verification failed: captcha token unavailable",
+                            LogType.ERROR,
+                            critical = true
+                        )
+                        dataRepository.updateVerifyOtpJobState(JobState.STOPPED)
+                        return LoginAttemptOutcome.Failure
+                    }
+                    vmLog(
+                        "Captcha token solve finished",
+                        LogType.SUCCESS,
+                        metadata = mapOf("phase" to "verify_otp")
+                    )
+
+                    vmLog(
                         "Waiting for login OTP from Firebase",
                         LogType.INFO,
                         metadata = mapOf("phone" to otpPhone)
@@ -524,7 +553,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     val otpOutcome = authApi.verifyOtp(
                         username = leasedAccount.email,
                         password = leasedAccount.password,
-                        cloudflareToken = cloudflareToken,
+                        cloudflareToken = verifyOtpCaptchaToken,
                         countryCode = leasedAccount.countryCode,
                         missionCode = leasedAccount.missionCode,
                         otp = loginOtp
