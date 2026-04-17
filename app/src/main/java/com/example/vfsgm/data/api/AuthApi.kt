@@ -3,9 +3,6 @@ package com.example.vfsgm.data.api
 import com.example.vfsgm.data.network.VfsApiClient
 import com.example.vfsgm.core.ClientSourceManager
 import com.example.vfsgm.core.EncryptionManager
-import com.example.vfsgm.core.logging.AppLogService
-import com.example.vfsgm.core.logging.LogType
-import com.example.vfsgm.data.dto.AppConfig
 import com.example.vfsgm.data.network.await
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -37,29 +34,9 @@ class AuthApi {
         password: String,
         cloudflareToken: String,
         countryCode: String,
-        missionCode: String,
-        appConfig: AppConfig
+        missionCode: String
     ): LoginOutcome {
         val encryptedPassword = EncryptionManager.encryptWithRsaOaepSha256(password)
-
-        AppLogService.log(
-            appConfig.deviceIndex,
-            "Login api called",
-            LogType.INFO,
-            tag = "AuthApi",
-            metadata = mapOf(
-                "username" to username,
-                "missionCode" to missionCode,
-                "countryCode" to countryCode
-            )
-        )
-
-        AppLogService.log(
-            appConfig.deviceIndex,
-            "Login request body: username=$username, missioncode=$missionCode, countrycode=$countryCode, languageCode=en-US, captcha_version=cloudflare-v1, password=<redacted>, captcha_api_key=<redacted>",
-            LogType.DEBUG,
-            tag = "AuthApi"
-        )
 
         return executeLoginRequest(
             username = username,
@@ -67,9 +44,7 @@ class AuthApi {
             cloudflareToken = cloudflareToken,
             countryCode = countryCode,
             missionCode = missionCode,
-            appConfig = appConfig,
-            otp = null,
-            logPrefix = "Login"
+            otp = null
         )
     }
 
@@ -79,36 +54,16 @@ class AuthApi {
         cloudflareToken: String,
         countryCode: String,
         missionCode: String,
-        otp: String,
-        appConfig: AppConfig
+        otp: String
     ): LoginOutcome {
         val encryptedPassword = EncryptionManager.encryptWithRsaOaepSha256(password)
-        AppLogService.log(
-            appConfig.deviceIndex,
-            "Verify OTP api called",
-            LogType.INFO,
-            tag = "AuthApi",
-            metadata = mapOf(
-                "username" to username,
-                "missionCode" to missionCode,
-                "countryCode" to countryCode
-            )
-        )
-        AppLogService.log(
-            appConfig.deviceIndex,
-            "Verify OTP request body: username=$username, missioncode=$missionCode, countrycode=$countryCode, languageCode=en-US, captcha_version=cloudflare-v1, password=<redacted>, captcha_api_key=<redacted>, otp=<redacted>",
-            LogType.DEBUG,
-            tag = "AuthApi"
-        )
         return executeLoginRequest(
             username = username,
             encryptedPassword = encryptedPassword,
             cloudflareToken = cloudflareToken,
             countryCode = countryCode,
             missionCode = missionCode,
-            appConfig = appConfig,
-            otp = otp,
-            logPrefix = "Verify OTP"
+            otp = otp
         )
     }
 
@@ -118,9 +73,7 @@ class AuthApi {
         cloudflareToken: String,
         countryCode: String,
         missionCode: String,
-        appConfig: AppConfig,
-        otp: String?,
-        logPrefix: String
+        otp: String?
     ): LoginOutcome {
         val formBody = FormBody.Builder().apply {
             add("username", username)
@@ -150,30 +103,12 @@ class AuthApi {
             val call = client.newCall(request)
             call.await().use { res ->
                 val bodyStr = res.body?.string().orEmpty()
-                AppLogService.log(
-                    appConfig.deviceIndex,
-                    "$logPrefix response received",
-                    if (res.isSuccessful) LogType.SUCCESS else LogType.WARNING,
-                    tag = "AuthApi",
-                    metadata = mapOf("statusCode" to res.code.toString())
-                )
-
                 if (!res.isSuccessful) throw IOException("HTTP ${res.code}: $bodyStr")
 
                 val loginResponse = loginResponseAdapter.fromJson(bodyStr)
                     ?: throw IOException("Failed to parse LoginResponse. Body=$bodyStr")
 
                 if (loginResponse.enableOTPAuthentication == true && loginResponse.accessToken.isNullOrBlank()) {
-                    AppLogService.log(
-                        appConfig.deviceIndex,
-                        "Login requires OTP verification",
-                        LogType.WARNING,
-                        tag = "AuthApi",
-                        metadata = mapOf(
-                            "contactNumber" to (loginResponse.contactNumber ?: ""),
-                            "dialCode" to (loginResponse.dialCode ?: "")
-                        )
-                    )
                     return LoginOutcome.OtpRequired(
                         dialCode = loginResponse.dialCode.orEmpty(),
                         contactNumber = loginResponse.contactNumber.orEmpty()
@@ -189,16 +124,8 @@ class AuthApi {
             }
         } catch (error: Exception) {
             error.printStackTrace()
-            AppLogService.log(
-                appConfig.deviceIndex,
-                "$logPrefix request failed",
-                LogType.ERROR,
-                tag = "AuthApi",
-                metadata = mapOf("error" to (error.message ?: "unknown")),
-                critical = true
-            )
         }
-        return LoginOutcome.Failure("$logPrefix request failed")
+        return LoginOutcome.Failure("Login request failed")
     }
 }
 

@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.vfsgm.core.CfCookieCheckManager
 import com.example.vfsgm.core.FirebaseDataService
+import com.example.vfsgm.core.FirebaseOtpService
 import com.example.vfsgm.core.logging.AppLogService
 import com.example.vfsgm.core.logging.DeviceIndexContext
 import com.example.vfsgm.core.logging.LogType
@@ -40,7 +41,6 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     private companion object {
         const val ADD_APPLICANT_MAX_ATTEMPTS = 5
         const val ADD_APPLICANT_RETRY_DELAY_MS = 10_000L
-        const val FIXED_LOGIN_OTP = "658992"
         const val TOTAL_FOLLOWER_APPS = 5
         const val FOLLOWER_PRIORITY_COUNT = 3
         const val FOLLOWER_MAX_DATES = 3
@@ -382,7 +382,8 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     CfCookieCheckManager.waitUntilCfCookieKeyExists()
 
                     vmLog("ReLogin cycle: login start", LogType.DEBUG)
-                    login {
+                    login(
+                        onLoginComplete = {
                         vmLog(
                             "ReLogin callback: login complete, triggering applicant+slot jobs",
                             LogType.SUCCESS
@@ -390,7 +391,16 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                         viewModelScope.launch(Dispatchers.IO) {
                             addApplicant(triggerSlotFlowOnSuccess = true)
                         }
-                    }
+                    },
+                        onLoginFailedAfterMaxAttempts = {
+                            vmLog(
+                                "ReLogin stopping because login exhausted max attempts",
+                                LogType.ERROR,
+                                critical = true
+                            )
+                            stopPeriodicReLogin()
+                        }
+                    )
                 } catch (e: Exception) {
                     vmLog(
                         "ReLogin cycle failed",
@@ -440,6 +450,15 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             metadata = mapOf("email" to leasedAccount.email)
         )
 
+        val leasedContactNumber = leasedAccount.phoneNumber.trim()
+        if (leasedContactNumber.isNotBlank()) {
+            FirebaseOtpService.clearLoginOtp(leasedContactNumber)
+            vmLog(
+                "Cleared previous login OTP for leased contact",
+                LogType.DEBUG
+            )
+        }
+
         val cloudflareToken = TurnstileService.solveTurnstile() ?: run {
             vmLog("Cloudflare token load failed", LogType.ERROR, critical = true)
             return LoginAttemptOutcome.Failure
@@ -451,8 +470,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             password = leasedAccount.password,
             cloudflareToken = cloudflareToken,
             countryCode = leasedAccount.countryCode,
-            missionCode = leasedAccount.missionCode,
-            appConfig = appConfigState.value
+            missionCode = leasedAccount.missionCode
         )
 
         when (loginOutcome) {
@@ -484,14 +502,32 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
                 dataRepository.updateVerifyOtpJobState(JobState.IN_PROGRESS)
                 return try {
+                    val otpPhone = leasedContactNumber
+                    if (otpPhone.isBlank()) {
+                        vmLog(
+                            "Auto OTP verification failed: leased contact number missing",
+                            LogType.ERROR,
+                            critical = true
+                        )
+                        dataRepository.updateVerifyOtpJobState(JobState.STOPPED)
+                        return LoginAttemptOutcome.Failure
+                    }
+
+                    vmLog(
+                        "Waiting for login OTP from Firebase",
+                        LogType.INFO,
+                        metadata = mapOf("phone" to otpPhone)
+                    )
+                    val loginOtp = FirebaseOtpService.readLoginOtp(otpPhone)
+                    vmLog("Login OTP received from Firebase", LogType.SUCCESS)
+
                     val otpOutcome = authApi.verifyOtp(
                         username = leasedAccount.email,
                         password = leasedAccount.password,
                         cloudflareToken = cloudflareToken,
                         countryCode = leasedAccount.countryCode,
                         missionCode = leasedAccount.missionCode,
-                        otp = FIXED_LOGIN_OTP,
-                        appConfig = appConfigState.value
+                        otp = loginOtp
                     )
                     when (otpOutcome) {
                         is LoginOutcome.Success -> {
@@ -558,7 +594,10 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    fun login(onLoginComplete: (() -> Unit)? = null) {
+    fun login(
+        onLoginComplete: (() -> Unit)? = null,
+        onLoginFailedAfterMaxAttempts: (() -> Unit)? = null
+    ) {
         if (loginJob?.isActive == true) {
             vmLog("login ignored because login job is already active", LogType.WARNING)
             return
@@ -642,6 +681,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 println("Login failed after $maxAttempts attempts.")
                 vmLog("Login failed after max attempts", LogType.ERROR, critical = true)
                 dataRepository.updateLoginJobState(JobState.STOPPED)
+                withContext(Dispatchers.Main) { onLoginFailedAfterMaxAttempts?.invoke() }
             } catch (e: CancellationException) {
                 vmLog("Login flow cancelled", LogType.DEBUG)
                 dataRepository.updateLoginJobState(JobState.STOPPED)

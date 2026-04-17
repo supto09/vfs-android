@@ -43,17 +43,22 @@ class ApiTraceInterceptor : Interceptor {
         val requestStartMs = System.currentTimeMillis()
         val requestPath = request.url.encodedPath
         val apiLabel = request.tag(String::class.java) ?: requestPath
+        val apiSource = resolveApiSource(request.url.host)
+        val apiHost = request.url.host
 
         logNetwork(
-            message = "HTTP START [$requestId]",
+            message = "HTTP START [$requestId] ${request.url}",
             type = LogType.INFO,
             metadata = mapOf(
                 "requestId" to requestId,
+                "apiSource" to apiSource,
+                "apiHost" to apiHost,
                 "apiLabel" to apiLabel,
                 "method" to request.method,
                 "url" to request.url.toString(),
                 "path" to requestPath,
-                "headers" to summarizeHeaders(request)
+                "headers" to summarizeHeaders(request),
+                "requestBodyPreview" to requestBodyPreview(request)
             )
         )
 
@@ -66,10 +71,12 @@ class ApiTraceInterceptor : Interceptor {
 
             val type = if (response.isSuccessful) LogType.SUCCESS else LogType.WARNING
             logNetwork(
-                message = "HTTP END [$requestId] -> ${response.code}",
+                message = "HTTP END [$requestId][$apiSource] -> ${response.code}",
                 type = type,
                 metadata = mapOf(
                     "requestId" to requestId,
+                    "apiSource" to apiSource,
+                    "apiHost" to apiHost,
                     "apiLabel" to apiLabel,
                     "method" to request.method,
                     "url" to request.url.toString(),
@@ -83,14 +90,17 @@ class ApiTraceInterceptor : Interceptor {
         } catch (e: IOException) {
             val durationMs = System.currentTimeMillis() - requestStartMs
             logNetwork(
-                message = "HTTP FAIL [$requestId]",
+                message = "HTTP END [$requestId][$apiSource] -> FAIL",
                 type = LogType.ERROR,
                 metadata = mapOf(
                     "requestId" to requestId,
+                    "apiSource" to apiSource,
+                    "apiHost" to apiHost,
                     "apiLabel" to apiLabel,
                     "method" to request.method,
                     "url" to request.url.toString(),
                     "durationMs" to durationMs.toString(),
+                    "statusCode" to "IO_EXCEPTION",
                     "error" to (e.message ?: "unknown")
                 )
             )
@@ -133,6 +143,15 @@ class ApiTraceInterceptor : Interceptor {
             val content = buffer.readString(charset)
             redactSensitiveText(content).replace("\n", " ").take(BODY_PREVIEW_LIMIT)
         }.getOrDefault("<unavailable>")
+    }
+}
+
+internal fun resolveApiSource(host: String): String {
+    val normalizedHost = host.lowercase()
+    return when {
+        normalizedHost.endsWith("ashulo.org") -> "ASHULO_API"
+        normalizedHost.endsWith("vfsglobal.com") -> "VFS_API"
+        else -> "EXTERNAL_API"
     }
 }
 

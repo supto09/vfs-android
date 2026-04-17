@@ -10,7 +10,12 @@ object LokiPayload {
         if (events.isEmpty()) return """{"streams":[]}"""
 
         val grouped = events.groupBy { event ->
-            Triple(event.level.name, event.tag ?: "app", event.deviceIndex.toString())
+            StreamKey(
+                level = event.level.name,
+                tag = event.tag ?: "app",
+                deviceIndex = event.deviceIndex.toString(),
+                apiSource = event.metadata["apiSource"] ?: "APP"
+            )
         }
 
         val streams = JSONArray()
@@ -18,9 +23,10 @@ object LokiPayload {
             val streamObj = JSONObject().apply {
                 put("app", LokiConfig.APP_LABEL)
                 put("version", BuildConfig.VERSION_NAME)
-                put("level", key.first.lowercase())
-                put("tag", key.second)
-                put("device_index", key.third)
+                put("level", key.level.lowercase())
+                put("tag", key.tag)
+                put("device_index", key.deviceIndex)
+                put("api_source", key.apiSource)
             }
 
             val values = JSONArray()
@@ -31,10 +37,11 @@ object LokiPayload {
                         put("metadata", JSONObject(event.metadata))
                     }
                 }
+                val renderedLine = lineJson.toString().replace("\\/", "/")
                 values.put(
                     JSONArray().apply {
                         put((event.timestampMs * 1_000_000L).toString())
-                        put(lineJson.toString())
+                        put(renderedLine)
                     }
                 )
             }
@@ -50,3 +57,10 @@ object LokiPayload {
         return JSONObject().put("streams", streams).toString()
     }
 }
+
+private data class StreamKey(
+    val level: String,
+    val tag: String,
+    val deviceIndex: String,
+    val apiSource: String
+)
