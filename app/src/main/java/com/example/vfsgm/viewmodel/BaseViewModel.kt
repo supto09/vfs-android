@@ -44,6 +44,7 @@ open class BaseViewModel(application: Application) : AndroidViewModel(applicatio
     var verifyOtpJob: Job? = null
     var loadApplicantsJob: Job? = null
     var addApplicantJob: Job? = null
+    var addApplicantFollowerJob: Job? = null
     var loadCalenderJob: Job? = null
     var checkSlotJob: Job? = null
     var loadSlotSlob: Job? = null

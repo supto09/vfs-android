@@ -15,6 +15,7 @@ data class DataState(
     val otpVerificationRequired: Boolean = false,
     val loadApplicantsJobRunning: JobState = JobState.NOT_STARTED,
     val addApplicantJobRunning: JobState = JobState.NOT_STARTED,
+    val addApplicantFollowerJobRunning: JobState = JobState.NOT_STARTED,
     val loadCalenderJobRunning: JobState = JobState.NOT_STARTED,
     val checkSlotJobRunning: JobState = JobState.NOT_STARTED,
     val loadSlotJobRunning: JobState = JobState.NOT_STARTED,

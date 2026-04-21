@@ -41,10 +41,26 @@ fun AppControlPanel(
                 modifier = Modifier.weight(2f),
                 enabled = dataState.addApplicantJobRunning != JobState.IN_PROGRESS
             ) {
-                Text("Add Applicants")
+                Text("Add Appl.")
             }
             MySolidButton(
                 onClick = { onAction(AppControlAction.StopAddApplicants) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Stop")
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MySolidButton(
+                onClick = { onAction(AppControlAction.AddApplicantsFollower) },
+                modifier = Modifier.weight(2f),
+                enabled = dataState.addApplicantFollowerJobRunning != JobState.IN_PROGRESS
+            ) {
+                Text("Add Appl Follower.")
+            }
+            MySolidButton(
+                onClick = { onAction(AppControlAction.StopAddApplicantsFollower) },
                 modifier = Modifier.weight(1f),
             ) {
                 Text("Stop")
@@ -126,6 +142,8 @@ sealed interface AppControlAction {
     data object StopLoadApplicants : AppControlAction
     data object AddApplicants : AppControlAction
     data object StopAddApplicants : AppControlAction
+    data object AddApplicantsFollower : AppControlAction
+    data object StopAddApplicantsFollower : AppControlAction
     data object StartCheckIsSlotAvailable : AppControlAction
     data object StopCheckIsSlotAvailable : AppControlAction
     data object LoadCalendar : AppControlAction

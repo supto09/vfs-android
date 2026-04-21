@@ -15,9 +15,14 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import java.io.IOException
 
 class LeasedAccountApi {
+    private companion object {
+        const val CLIENT_API_TOKEN = "vfs-client-token-2026-temp-9Kq2Lm7P"
+    }
+
     private val client by lazy(LazyThreadSafetyMode.PUBLICATION) {
         MyApiClient().client
     }
@@ -34,7 +39,8 @@ class LeasedAccountApi {
             {
               "leaseOwner": "$leaseOwner",
               "countryCode": "${entry.countryCode}",
-              "missionCode": "${entry.missionCode}"
+              "missionCode": "${entry.missionCode}",
+              "clientToken": "$CLIENT_API_TOKEN"
             }
             """.trimIndent()
 
@@ -108,12 +114,57 @@ class LeasedAccountApi {
         }
     }
 
+    suspend fun getFollowerAppCount(entry: Entry): SealedResult<Int> {
+        val requestBodyJson = """
+            {
+              "countryCode": "${entry.countryCode}",
+              "missionCode": "${entry.missionCode}",
+              "clientToken": "$CLIENT_API_TOKEN"
+            }
+            """.trimIndent()
+
+        val mediaType = "application/json".toMediaType()
+        val requestBody = requestBodyJson.toRequestBody(mediaType)
+
+        val request = Request.Builder().apply {
+            url("https://vfsapi.ashulo.org/accounts/follower-app-number")
+            post(requestBody)
+        }.build()
+
+        return try {
+            val call = client.newCall(request)
+            call.await().use { res ->
+                val bodyStr = res.body?.string().orEmpty()
+                if (!res.isSuccessful) throw IOException("HTTP ${res.code}: $bodyStr")
+
+                val followerAppCount = parseFollowerAppCount(bodyStr)
+                    ?: throw IOException("Follower app count missing in response: $bodyStr")
+
+                if (followerAppCount <= 0) {
+                    throw IOException("Follower app count must be > 0: $followerAppCount")
+                }
+
+                SealedResult.Success(followerAppCount)
+            }
+        } catch (error: Exception) {
+            SealedResult.Error(error)
+        }
+    }
+
+    private fun parseFollowerAppCount(rawBody: String): Int? {
+        val json = runCatching { JSONObject(rawBody.trim()) }.getOrNull() ?: return null
+        return json.optString("followerAppNumber")
+            .trim()
+            .toIntOrNull()
+    }
+
     suspend fun reportBlock(email: String, entry: Entry): SealedResult<Unit> {
         val requestBodyJson = """
             {
               "email": "$email",
               "countryCode": "${entry.countryCode}",
-              "missionCode": "${entry.missionCode}"
+              "missionCode": "${entry.missionCode}",
+              "clientToken": "$CLIENT_API_TOKEN"
             }
             """.trimIndent()
 

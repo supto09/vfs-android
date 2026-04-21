@@ -48,6 +48,10 @@ class DataRepository() {
         _state.update { it.copy(addApplicantJobRunning = jobState) }
     }
 
+    fun updateAddApplicantFollowerJobState(jobState: JobState) {
+        _state.update { it.copy(addApplicantFollowerJobRunning = jobState) }
+    }
+
     fun updateLoadCalenderJobState(jobState: JobState) {
         _state.update { it.copy(loadCalenderJobRunning = jobState) }
     }

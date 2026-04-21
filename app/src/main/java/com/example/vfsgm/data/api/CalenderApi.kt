@@ -124,9 +124,13 @@ class CalenderApi {
     suspend fun loadCalender(
         sessionData: SessionData,
         entry: Entry,
-        urn: String
+        urn: String,
+        fromDate: String? = null
     ): SealedResult<List<String>> {
-        val todayFormatted = LocalDate.now().format(DateTimeFormatter.ofPattern(DATE_FORMAT))
+        val effectiveFromDate = fromDate
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: LocalDate.now().format(DateTimeFormatter.ofPattern(DATE_FORMAT))
 
         val requestBodyJson = """
             {
@@ -135,7 +139,7 @@ class CalenderApi {
               "centerCode": "${entry.vacCode}",
               "loginUser": "${sessionData.username}",
               "visaCategoryCode": "${entry.visaCategoryCode}",
-              "fromDate": "$todayFormatted",
+              "fromDate": "$effectiveFromDate",
               "urn": "$urn",
               "payCode": ""
             }
