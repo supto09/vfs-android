@@ -25,7 +25,7 @@ object FirebaseOtpService {
         )
 
     suspend fun readLoginOtpByFirebaseKey(firebaseContactKey: String): String =
-        withTimeout(120_000L) {
+        withTimeout(240_000L) {
             awaitNonBlankString("otps/$firebaseContactKey/loginOtp")
         }
 

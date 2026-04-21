@@ -12,6 +12,7 @@ import com.example.vfsgm.core.logging.LogType
 import com.example.vfsgm.core.JitterService
 import com.example.vfsgm.core.SealedResult
 import com.example.vfsgm.core.TurnstileService
+import com.example.vfsgm.data.constants.DATE_FORMAT
 import com.example.vfsgm.data.api.ApplicantApi
 import com.example.vfsgm.data.api.AuthApi
 import com.example.vfsgm.data.api.CalenderApi
@@ -30,18 +31,24 @@ import com.example.vfsgm.data.repository.SessionRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 class MainViewModel(application: Application) : BaseViewModel(application) {
     private companion object {
         const val ADD_APPLICANT_MAX_ATTEMPTS = 5
         const val ADD_APPLICANT_RETRY_DELAY_MS = 10_000L
-        const val TOTAL_FOLLOWER_APPS = 5
+        const val ADD_APPLICANT_NO_SLOT_ERROR_CODE = "\"code\":10673"
+        const val ADD_APPLICANT_NO_SLOT_DESCRIPTION = "no appointment slots are currently available"
+        const val ADD_APPLICANT_NO_SLOT_DESCRIPTION_ALT = "new slots open at regular intervals"
+        const val DEFAULT_TOTAL_FOLLOWER_APPS = 4
         const val FOLLOWER_PRIORITY_COUNT = 3
         const val FOLLOWER_MAX_DATES = 3
         const val FOLLOWER_SLOT_ROUNDS = 2
@@ -59,6 +66,15 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         data class Failure(val reason: String) : SlotLoadAttemptOutcome
     }
 
+    private fun isNoSlotInformationError(rawMessage: String): Boolean {
+        val normalized = rawMessage.lowercase()
+        val descriptionMatch = normalized.contains(ADD_APPLICANT_NO_SLOT_DESCRIPTION) ||
+            normalized.contains(ADD_APPLICANT_NO_SLOT_DESCRIPTION_ALT)
+
+        // Text match is primary. Error code is kept as an additional hint.
+        return descriptionMatch || rawMessage.contains(ADD_APPLICANT_NO_SLOT_ERROR_CODE)
+    }
+
     @Volatile
     private var isCurrentCycleFinder: Boolean = false
 
@@ -67,6 +83,40 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     @Volatile
     private var followerPriorityDates: List<String> = emptyList()
+
+    @Volatile
+    private var currentFollowerAppCount: Int = DEFAULT_TOTAL_FOLLOWER_APPS
+
+    private suspend fun refreshFollowerAppCountForEntry(entry: Entry) {
+        when (val followerCountResult = leasedAccountApi.getFollowerAppCount(entry)) {
+            is SealedResult.Success -> {
+                currentFollowerAppCount = followerCountResult.data
+                vmLog(
+                    "Follower app count loaded for entry",
+                    LogType.SUCCESS,
+                    metadata = mapOf(
+                        "countryCode" to entry.countryCode,
+                        "missionCode" to entry.missionCode,
+                        "followerAppCount" to followerCountResult.data.toString()
+                    )
+                )
+            }
+
+            is SealedResult.Error -> {
+                currentFollowerAppCount = DEFAULT_TOTAL_FOLLOWER_APPS
+                vmLog(
+                    "Follower app count load failed; using default",
+                    LogType.WARNING,
+                    metadata = mapOf(
+                        "countryCode" to entry.countryCode,
+                        "missionCode" to entry.missionCode,
+                        "defaultFollowerAppCount" to DEFAULT_TOTAL_FOLLOWER_APPS.toString(),
+                        "error" to (followerCountResult.exception.message ?: "unknown")
+                    )
+                )
+            }
+        }
+    }
 
     private fun resetCycleCoordinationState(reason: String) {
         isCurrentCycleFinder = false
@@ -81,13 +131,14 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     private fun computeFollowerPriorityDates(
         availableDates: List<String>,
-        deviceIndex: Int
+        deviceIndex: Int,
+        followerAppCount: Int
     ): List<String> {
         val uniqueDates = availableDates.distinct()
         val dateCount = uniqueDates.size
         if (dateCount == 0) return emptyList()
 
-        val bucketSize = minOf(TOTAL_FOLLOWER_APPS, dateCount)
+        val bucketSize = minOf(followerAppCount.coerceAtLeast(1), dateCount)
         val startOffset = ((deviceIndex - 1).coerceAtLeast(0)) % bucketSize
         val targetCount = minOf(FOLLOWER_PRIORITY_COUNT, dateCount)
 
@@ -310,6 +361,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     try {
                         entryRepository.loadEntry(entryIndex = entryIndex)
                         val loadedEntry = entryState.value
+                        refreshFollowerAppCountForEntry(loadedEntry)
                         println("Loaded entry for entryIndex=$entryIndex: $loadedEntry")
                         vmLog(
                             "Entry loaded",
@@ -344,12 +396,15 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         loadApplicantsJob = null
         addApplicantJob?.cancel()
         addApplicantJob = null
+        addApplicantFollowerJob?.cancel()
+        addApplicantFollowerJob = null
         loadCalenderJob?.cancel()
         loadCalenderJob = null
         dataRepository.updateLoginJobState(JobState.STOPPED)
         dataRepository.updateVerifyOtpJobState(JobState.STOPPED)
         dataRepository.updateLoadApplicantsJobState(JobState.STOPPED)
         dataRepository.updateAddApplicantJobState(JobState.STOPPED)
+        dataRepository.updateAddApplicantFollowerJobState(JobState.STOPPED)
         dataRepository.updateLoadCalenderJobState(JobState.STOPPED)
         dataRepository.updateOtpVerificationRequired(false)
         checkSlotJob?.cancel()
@@ -385,11 +440,14 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     login(
                         onLoginComplete = {
                         vmLog(
-                            "ReLogin callback: login complete, triggering applicant+slot jobs",
+                            "ReLogin callback: login complete, triggering addApplicant and addApplicantFollower jobs",
                             LogType.SUCCESS
                         )
                         viewModelScope.launch(Dispatchers.IO) {
                             addApplicant(triggerSlotFlowOnSuccess = true)
+                        }
+                        viewModelScope.launch(Dispatchers.IO) {
+                            addApplicantFollower(triggerSlotFlowOnSuccess = true)
                         }
                     },
                         onLoginFailedAfterMaxAttempts = {
@@ -592,6 +650,14 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                             LoginAttemptOutcome.Failure
                         }
                     }
+                } catch (e: TimeoutCancellationException) {
+                    dataRepository.updateVerifyOtpJobState(JobState.STOPPED)
+                    vmLog(
+                        "Auto OTP verification timed out waiting for Firebase OTP",
+                        LogType.ERROR,
+                        critical = true
+                    )
+                    LoginAttemptOutcome.Failure
                 } catch (e: CancellationException) {
                     dataRepository.updateVerifyOtpJobState(JobState.STOPPED)
                     throw e
@@ -805,8 +871,11 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         var lastFailureReason = "unknown"
         var completed = false
         try {
-            repeat(ADD_APPLICANT_MAX_ATTEMPTS) { attemptIndex ->
-                val attempt = attemptIndex + 1
+            var countedAttempt = 0
+            var totalAttempt = 0
+
+            while (countedAttempt < ADD_APPLICANT_MAX_ATTEMPTS) {
+                totalAttempt += 1
 
                 try {
                     val urn = applicantApi.addApplicant(
@@ -814,48 +883,88 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     )
 
                     if (urn.isBlank()) {
+                        countedAttempt += 1
                         lastFailureReason = "blank urn"
                         vmLog(
                             "addApplicant attempt failed: blank URN",
                             LogType.WARNING,
-                            metadata = mapOf("attempt" to attempt.toString())
+                            metadata = mapOf(
+                                "attempt" to totalAttempt.toString(),
+                                "countedAttempt" to countedAttempt.toString()
+                            )
                         )
                     } else {
+                        val todayFormatted = LocalDate.now().format(DateTimeFormatter.ofPattern(DATE_FORMAT))
+                        isCurrentCycleFinder = true
+                        currentCycleEarliestDate = todayFormatted
+                        FirebaseDataService.saveEarliestSlotDate(
+                            date = todayFormatted,
+                            entry = entry
+                        )
+                        vmLog(
+                            "addApplicant success: marked as finder and saved today's date to Firebase",
+                            LogType.SUCCESS,
+                            metadata = mapOf("earliestDate" to todayFormatted)
+                        )
+
                         dataRepository.saveUrn(urn = urn)
                         completed = true
                         vmLog(
                             "addApplicant completed",
                             LogType.SUCCESS,
-                            metadata = mapOf("attempt" to attempt.toString(), "urn" to urn)
+                            metadata = mapOf(
+                                "attempt" to totalAttempt.toString(),
+                                "countedAttempt" to countedAttempt.toString(),
+                                "urn" to urn
+                            )
                         )
                         if (triggerSlotFlowOnSuccess) {
                             vmLog(
-                                "addApplicant success: starting checkSlot and loadCalender jobs",
+                                "addApplicant success: starting loadCalender job with today's date",
                                 LogType.DEBUG
                             )
-                            startCheckIsSlotAvailable()
                             loadCalender()
                         }
                         return true
                     }
                 } catch (e: Exception) {
-                    lastFailureReason = e.message ?: "unknown"
+                    val errorMessage = e.message ?: "unknown"
+                    if (isNoSlotInformationError(errorMessage)) {
+                        val jitterMs = jitterService.nextDelayMillis()
+                        val delayMs = (3 * 60_000L) + jitterMs
+                        vmLog(
+                            "addApplicant no-slot information received; retrying without counting attempt",
+                            LogType.INFO,
+                            metadata = mapOf(
+                                "attempt" to totalAttempt.toString(),
+                                "countedAttempt" to countedAttempt.toString(),
+                                "delayMs" to delayMs.toString()
+                            )
+                        )
+                        delay(delayMs)
+                        continue
+                    }
+
+                    countedAttempt += 1
+                    lastFailureReason = errorMessage
                     vmLog(
                         "addApplicant attempt failed with exception",
                         LogType.WARNING,
                         metadata = mapOf(
-                            "attempt" to attempt.toString(),
+                            "attempt" to totalAttempt.toString(),
+                            "countedAttempt" to countedAttempt.toString(),
                             "error" to lastFailureReason
                         )
                     )
                 }
 
-                if (attempt < ADD_APPLICANT_MAX_ATTEMPTS) {
+                if (countedAttempt < ADD_APPLICANT_MAX_ATTEMPTS) {
                     vmLog(
                         "addApplicant retry scheduled",
                         LogType.DEBUG,
                         metadata = mapOf(
-                            "nextAttempt" to (attempt + 1).toString(),
+                            "nextAttempt" to (totalAttempt + 1).toString(),
+                            "nextCountedAttempt" to (countedAttempt + 1).toString(),
                             "delayMs" to ADD_APPLICANT_RETRY_DELAY_MS.toString()
                         )
                     )
@@ -920,6 +1029,195 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         addApplicantJob = null
         dataRepository.updateAddApplicantJobState(JobState.STOPPED)
         vmLog("Add applicant job state set to STOPPED", LogType.DEBUG)
+    }
+
+    suspend fun addApplicantFollower(triggerSlotFlowOnSuccess: Boolean = false): Boolean {
+        if (dataState.value.addApplicantFollowerJobRunning == JobState.IN_PROGRESS) {
+            vmLog("addApplicantFollower ignored because job is already active", LogType.WARNING)
+            return false
+        }
+
+        val sessionData = sessionState.value ?: run {
+            vmLog("addApplicantFollower skipped: session is null", LogType.WARNING)
+            return false
+        }
+        val entry = entryState.value
+
+        val earliestSlotDate = try {
+            FirebaseDataService.readEarliestSlotDate(entry = entry)
+        } catch (e: Exception) {
+            vmLog(
+                "addApplicantFollower failed to read earliest date from Firebase",
+                LogType.ERROR,
+                metadata = mapOf("error" to (e.message ?: "unknown"))
+            )
+            return false
+        }
+
+        if (addApplicantJob?.isActive == true || dataState.value.addApplicantJobRunning == JobState.IN_PROGRESS) {
+            vmLog(
+                "addApplicantFollower read earliest date; stopping regular addApplicant job",
+                LogType.INFO,
+                metadata = mapOf("earliestDate" to earliestSlotDate)
+            )
+            stopAddApplicant()
+        }
+
+        vmLog(
+            "addApplicantFollower started",
+            LogType.DEBUG,
+            metadata = mapOf(
+                "maxAttempts" to ADD_APPLICANT_MAX_ATTEMPTS.toString(),
+                "earliestDate" to earliestSlotDate
+            )
+        )
+
+        dataRepository.updateAddApplicantFollowerJobState(JobState.IN_PROGRESS)
+        vmLog("Add applicant follower job state set to IN_PROGRESS", LogType.DEBUG)
+
+        var lastFailureReason = "unknown"
+        var completed = false
+        try {
+            var countedAttempt = 0
+            var totalAttempt = 0
+
+            while (countedAttempt < ADD_APPLICANT_MAX_ATTEMPTS) {
+                totalAttempt += 1
+
+                try {
+                    val urn = applicantApi.addApplicant(
+                        sessionData = sessionData, entry = entry, appConfig = appConfigState.value
+                    )
+
+                    if (urn.isBlank()) {
+                        countedAttempt += 1
+                        lastFailureReason = "blank urn"
+                        vmLog(
+                            "addApplicantFollower attempt failed: blank URN",
+                            LogType.WARNING,
+                            metadata = mapOf(
+                                "attempt" to totalAttempt.toString(),
+                                "countedAttempt" to countedAttempt.toString()
+                            )
+                        )
+                    } else {
+                        dataRepository.saveUrn(urn = urn)
+                        completed = true
+                        vmLog(
+                            "addApplicantFollower completed",
+                            LogType.SUCCESS,
+                            metadata = mapOf(
+                                "attempt" to totalAttempt.toString(),
+                                "countedAttempt" to countedAttempt.toString(),
+                                "urn" to urn
+                            )
+                        )
+                        if (triggerSlotFlowOnSuccess) {
+                            vmLog(
+                                "addApplicantFollower success: starting loadCalender with Firebase earliest date",
+                                LogType.DEBUG,
+                                metadata = mapOf("earliestDate" to earliestSlotDate)
+                            )
+                            loadCalender(fromDate = earliestSlotDate)
+                        }
+                        return true
+                    }
+                } catch (e: Exception) {
+                    val errorMessage = e.message ?: "unknown"
+                    if (isNoSlotInformationError(errorMessage)) {
+                        val jitterMs = jitterService.nextDelayMillis()
+                        val delayMs = (3 * 60_000L) + jitterMs
+                        vmLog(
+                            "addApplicantFollower no-slot information received; retrying without counting attempt",
+                            LogType.INFO,
+                            metadata = mapOf(
+                                "attempt" to totalAttempt.toString(),
+                                "countedAttempt" to countedAttempt.toString(),
+                                "delayMs" to delayMs.toString()
+                            )
+                        )
+                        delay(delayMs)
+                        continue
+                    }
+
+                    countedAttempt += 1
+                    lastFailureReason = errorMessage
+                    vmLog(
+                        "addApplicantFollower attempt failed with exception",
+                        LogType.WARNING,
+                        metadata = mapOf(
+                            "attempt" to totalAttempt.toString(),
+                            "countedAttempt" to countedAttempt.toString(),
+                            "error" to lastFailureReason
+                        )
+                    )
+                }
+
+                if (countedAttempt < ADD_APPLICANT_MAX_ATTEMPTS) {
+                    vmLog(
+                        "addApplicantFollower retry scheduled",
+                        LogType.DEBUG,
+                        metadata = mapOf(
+                            "nextAttempt" to (totalAttempt + 1).toString(),
+                            "nextCountedAttempt" to (countedAttempt + 1).toString(),
+                            "delayMs" to ADD_APPLICANT_RETRY_DELAY_MS.toString()
+                        )
+                    )
+                    delay(ADD_APPLICANT_RETRY_DELAY_MS)
+                }
+            }
+        } finally {
+            val finalState = if (completed) JobState.COMPLETE else JobState.STOPPED
+            dataRepository.updateAddApplicantFollowerJobState(finalState)
+            vmLog(
+                "Add applicant follower job state updated",
+                LogType.DEBUG,
+                metadata = mapOf("state" to finalState.name)
+            )
+        }
+
+        vmLog(
+            "addApplicantFollower failed after max attempts",
+            LogType.ERROR,
+            metadata = mapOf(
+                "attempts" to ADD_APPLICANT_MAX_ATTEMPTS.toString(),
+                "reason" to lastFailureReason
+            )
+        )
+        if (triggerSlotFlowOnSuccess) {
+            vmLog(
+                "addApplicantFollower failed after max retries; slot flow skipped",
+                LogType.WARNING
+            )
+        }
+        return false
+    }
+
+    fun addApplicantFollowerManual() {
+        if (addApplicantFollowerJob?.isActive == true ||
+            dataState.value.addApplicantFollowerJobRunning == JobState.IN_PROGRESS
+        ) {
+            vmLog("addApplicantFollowerManual ignored because job is already active", LogType.WARNING)
+            return
+        }
+        addApplicantFollowerJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                addApplicantFollower(triggerSlotFlowOnSuccess = true)
+            } catch (e: CancellationException) {
+                vmLog("addApplicantFollower manual job cancelled", LogType.DEBUG)
+                throw e
+            } finally {
+                addApplicantFollowerJob = null
+            }
+        }
+    }
+
+    fun stopAddApplicantFollower() {
+        vmLog("stopAddApplicantFollower called", LogType.WARNING)
+        addApplicantFollowerJob?.cancel()
+        addApplicantFollowerJob = null
+        dataRepository.updateAddApplicantFollowerJobState(JobState.STOPPED)
+        vmLog("Add applicant follower job state set to STOPPED", LogType.DEBUG)
     }
 
     fun startCheckIsSlotAvailable() {
@@ -1033,7 +1331,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         vmLog("Check slot job state set to STOPPED", LogType.DEBUG)
     }
 
-    fun loadCalender() {
+    fun loadCalender(fromDate: String? = null) {
         if (loadCalenderJob?.isActive == true || dataState.value.loadCalenderJobRunning == JobState.IN_PROGRESS) {
             vmLog("loadCalender ignored because job is already active", LogType.WARNING)
             return
@@ -1049,39 +1347,32 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             dataRepository.updateLoadCalenderJobState(JobState.IN_PROGRESS)
             var completed = false
             try {
-                val earliestSlotDate = FirebaseDataService.readEarliestSlotDate(entry = entry)
-                currentCycleEarliestDate = earliestSlotDate
+                val effectiveFromDate = fromDate
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: LocalDate.now().format(DateTimeFormatter.ofPattern(DATE_FORMAT))
                 vmLog(
-                    "loadCalender received earliest slot date from Firebase",
-                    LogType.SUCCESS,
-                    metadata = mapOf("date" to earliestSlotDate)
+                    "loadCalender using fromDate",
+                    LogType.DEBUG,
+                    metadata = mapOf("fromDate" to effectiveFromDate)
                 )
-
-                if (checkSlotJob?.isActive == true || dataState.value.checkSlotJobRunning == JobState.IN_PROGRESS) {
-                    vmLog("loadCalender stopping running checkSlot job", LogType.DEBUG)
-                    stopCheckIsSlotAvailable()
-                }
-
-                if (isCurrentCycleFinder) {
-                    vmLog(
-                        "loadCalender exiting early for finder app",
-                        LogType.DEBUG,
-                        metadata = mapOf("date" to earliestSlotDate)
-                    )
-                    followerPriorityDates = emptyList()
-                    completed = true
-                    return@launch
-                }
+                currentCycleEarliestDate = null
+                followerPriorityDates = emptyList()
 
                 val result = calenderApi.loadCalender(
-                    sessionData = sessionData, entry = entry, urn = dataState.value.urn
+                    sessionData = sessionData,
+                    entry = entry,
+                    urn = dataState.value.urn,
+                    fromDate = effectiveFromDate
                 )
                 when (result) {
                     is SealedResult.Success -> {
                         dataRepository.saveAvailableDates(dates = result.data)
+                        val followerAppCount = currentFollowerAppCount
                         val priorityDates = computeFollowerPriorityDates(
                             availableDates = result.data,
-                            deviceIndex = appConfigState.value.deviceIndex
+                            deviceIndex = appConfigState.value.deviceIndex,
+                            followerAppCount = followerAppCount
                         )
                         followerPriorityDates = priorityDates
                         val selectedFollowerDate = priorityDates.firstOrNull()
@@ -1090,6 +1381,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                             LogType.SUCCESS,
                             metadata = mapOf(
                                 "deviceIndex" to appConfigState.value.deviceIndex.toString(),
+                                "followerAppCount" to followerAppCount.toString(),
                                 "dateCount" to result.data.size.toString(),
                                 "selectedPriorityDates" to priorityDates.joinToString("|"),
                                 "selectedDate" to (selectedFollowerDate ?: "")
